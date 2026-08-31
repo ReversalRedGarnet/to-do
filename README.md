@@ -7,15 +7,17 @@ You enter tasks and obligations; the app evaluates them against urgency,
 importance, consequence, deadline pressure, effort, and project relationships,
 and distributes them across the days of the week — not exact times.
 
-**Status:** vertical slice working end to end (task creation, priority
-scoring, weekly scheduling, week/today views, complete/defer, color
-state, multi-day rollover reconciliation) plus real Windows toast
+**Status:** v1 complete — every item in spec §60's definition-of-done
+checklist is covered. Vertical slice working end to end (task creation,
+priority scoring, weekly scheduling, week/today views, complete/defer,
+color state, multi-day rollover reconciliation), real Windows toast
 notifications (winotify), a mid-session midnight-rollover timer,
 recurring tasks (daily/weekly/monthly/custom-weekdays, editable from the
-task editor), keyboard shortcuts (§50), system-aware dark mode, and a
-packaged Windows build (see below) — 105/105 tests passing. A Settings
-screen is not wired up yet. See `IMPLEMENTATION_PLAN.md` for the
-phase-by-phase status and `ARCHITECTURE.md` / `ALGORITHM.md` for design
+task editor), keyboard shortcuts (§50), system-aware dark mode, a
+packaged Windows build, and a Settings screen for notifications/Sunday
+reminder/daily capacity — 115/115 tests passing. See
+`IMPLEMENTATION_PLAN.md` for the phase-by-phase status and
+`ARCHITECTURE.md` / `ALGORITHM.md` for design
 details.
 
 ## Running

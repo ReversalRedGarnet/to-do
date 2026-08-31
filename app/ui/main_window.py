@@ -17,6 +17,7 @@ from app.core.date_service import week_start
 from app.core.state_engine import derive_color
 from app.models.task import TaskStatus
 from app.ui.project_view import ProjectView
+from app.ui.settings_view import SettingsView
 from app.ui.task_editor import TaskEditorDialog
 from app.ui.task_entry import QuickTaskEntry
 from app.ui.weekly_board import WeeklyBoard
@@ -256,7 +257,7 @@ def _install_shortcuts(window, sidebar, today_panel, week_board, week_entry) -> 
 
 def build_main_window(
     task_service, schedule_service, project_repository, category_repository,
-    *, recurrence_service=None, reconciliation_service=None,
+    *, recurrence_service=None, settings_service=None, reconciliation_service=None,
     notification_service=None, app_state_repository=None,
 ):
     """Constructs the QMainWindow. Caller (main.py) owns the QApplication
@@ -265,11 +266,13 @@ def build_main_window(
     All keyword-only services are optional so callers that don't need
     them (tests, throwaway driver scripts) can omit them.
     `recurrence_service` enables the "Repeats" control in the task editor.
-    When `reconciliation_service`/`notification_service`/
-    `app_state_repository` are all given, a QTimer watches for the date
-    changing while the app stays open (spec §19) and re-runs
-    reconciliation + a single notify_day_rollover in place, without a
-    restart."""
+    `settings_service` adds a Settings tab to the sidebar (spec §27/§47);
+    without it, no Settings tab is shown at all rather than a
+    non-functional placeholder. When `reconciliation_service`/
+    `notification_service`/`app_state_repository` are all given, a QTimer
+    watches for the date changing while the app stays open (spec §19) and
+    re-runs reconciliation + a single notify_day_rollover in place,
+    without a restart."""
     window = QMainWindow()
     window.setWindowTitle("My Week")
     window.resize(1100, 700)
@@ -277,9 +280,13 @@ def build_main_window(
     central = QWidget()
     root_layout = QHBoxLayout(central)
 
+    sidebar_labels = ["Today", "This Week", "Projects"]
+    if settings_service is not None:
+        sidebar_labels.append("Settings")
+
     sidebar = QListWidget()
     sidebar.setMaximumWidth(160)
-    for label in ("Today", "This Week", "Projects"):
+    for label in sidebar_labels:
         QListWidgetItem(label, sidebar)
 
     stack = QStackedWidget()
@@ -305,6 +312,10 @@ def build_main_window(
 
     project_panel = ProjectView(project_repository, task_service)
     stack.addWidget(project_panel)
+
+    if settings_service is not None:
+        settings_panel = SettingsView(settings_service)
+        stack.addWidget(settings_panel)
 
     def _on_sidebar_row_changed(index: int) -> None:
         # Selection clears on view switch rather than persisting invisibly

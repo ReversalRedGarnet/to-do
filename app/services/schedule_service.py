@@ -3,7 +3,7 @@
 from datetime import date, timedelta
 from typing import List, Optional
 
-from app.config.settings import DEFAULT_WEEKLY_CAPACITY
+from app.config.settings import Capacity, DEFAULT_WEEKLY_CAPACITY
 from app.core import date_service
 from app.core.scheduling_engine import generate_weekly_schedule
 from app.models.schedule import ScheduleEntry
@@ -11,16 +11,30 @@ from app.models.task import TaskStatus
 
 
 class ScheduleService:
-    def __init__(self, task_repository, schedule_repository, fixed_event_repository):
+    def __init__(self, task_repository, schedule_repository, fixed_event_repository,
+                 settings_repository=None):
         self._tasks = task_repository
         self._schedules = schedule_repository
         self._fixed_events = fixed_event_repository
+        self._settings = settings_repository
+
+    def _default_capacities(self) -> list:
+        """User-configured daily capacities (Settings screen, spec §47) when
+        available, falling back to the v1 constant otherwise — e.g. in
+        tests/callers that don't wire a settings_repository."""
+        if self._settings is None:
+            return DEFAULT_WEEKLY_CAPACITY
+        try:
+            names = self._settings.get().daily_capacities
+            return [Capacity[name] for name in names]
+        except (KeyError, TypeError, ValueError):
+            return DEFAULT_WEEKLY_CAPACITY
 
     def generate_week(self, week_start: date, capacities: Optional[list] = None) -> dict:
         """Runs the greedy allocator for this week and persists the result.
         Fixed-date events are read-only inputs (spec §5.3) — never rewritten."""
         week_end = week_start + timedelta(days=6)
-        capacities = capacities if capacities is not None else DEFAULT_WEEKLY_CAPACITY
+        capacities = capacities if capacities is not None else self._default_capacities()
 
         tasks = self._tasks.list_eligible_for_week(week_start, week_end)
         fixed_events = self._fixed_events.list_between(week_start, week_end)

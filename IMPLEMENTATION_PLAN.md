@@ -284,6 +284,50 @@ end-to-end via the driven UI session above.**
       files beyond what PySide6/winotify's own PyInstaller hooks already
       handle automatically (confirmed by the clean build + clean run).
 
+## Post-v1 follow-up — Settings screen (spec §27/§47)
+
+The one gap noted when v1 was confirmed against spec §60's checklist:
+`notifications_enabled`, `sunday_reminder_enabled`, and daily capacities
+were persisted and read live, but only editable via a hand-edit of the
+DB. Closed out:
+
+- [x] `app/services/settings_service.py` — thin service wrapping
+      `SettingsRepository`, matching the rest of the app's UI-calls-
+      services-not-repositories convention. `update()` is a partial
+      update (only overwrites fields explicitly passed), same pattern as
+      `TaskService.update_task`.
+- [x] `app/ui/settings_view.py` — a real Settings screen: notifications
+      checkbox, Sunday-reminder checkbox, and a 7-row Monday-first daily
+      capacity form (LOW/MEDIUM/HIGH dropdowns), with an explicit Save
+      button (matching the rest of the app's explicit-save UX rather
+      than autosave-on-change). Added to the sidebar in
+      `build_main_window` only when a `settings_service` is passed in —
+      no Settings tab shown at all otherwise, rather than a
+      non-functional placeholder.
+- [x] **Made daily capacity actually effective, not just editable**: found
+      that `ScheduleService.generate_week` never read `settings.
+      daily_capacities` at all — it always used the hardcoded
+      `DEFAULT_WEEKLY_CAPACITY` constant unless a caller passed
+      `capacities` explicitly (which `main_window.py`'s "Generate Week"
+      button never did). Editing capacities in Settings would have been
+      silently ignored. Fixed by giving `ScheduleService` an optional
+      `settings_repository` and having `generate_week` fall back to the
+      user's configured capacities (converted from the stored name
+      strings via `Capacity[name]`) when no explicit `capacities` arg is
+      given — falling back further to `DEFAULT_WEEKLY_CAPACITY` if no
+      settings_repository was wired at all (keeps every existing test's
+      3-arg `ScheduleService(...)` construction working unchanged).
+- [x] Fixed `AppSettings.daily_capacities`'s type hint from `dict` to
+      `List[str]` — it was already stored/read as a list of 7 capacity
+      names, the annotation just didn't match.
+- [x] Tests: `test_settings_service.py` (6, including one that proves a
+      LOW-capacity Settings change actually produces an `OVERCOMMITTED`
+      placement — not just that the value round-trips) and
+      `test_settings_view.py` (4, drives the real widget) — 115/115
+      passing overall. Visually confirmed via screenshot: prefilled
+      defaults (Sat HIGH/Sun LOW), toggling + saving, and the "Saved."
+      confirmation.
+
 ---
 
 Progress is tracked by checking boxes above as each piece lands and tests

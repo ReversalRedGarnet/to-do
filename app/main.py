@@ -36,6 +36,7 @@ from app.services.history_service import HistoryService
 from app.services.reconciliation_service import ReconciliationService
 from app.services.recurrence_service import RecurrenceService
 from app.services.schedule_service import ScheduleService
+from app.services.settings_service import SettingsService
 from app.services.task_service import TaskService
 from app.ui.main_window import build_main_window
 from app.ui.theme import apply_system_theme
@@ -115,8 +116,9 @@ def main() -> int:
 
     recurrence_service = RecurrenceService(task_repo, recurrence_repo)
     task_service = TaskService(task_repo, notification_service, recurrence_service)
-    schedule_service = ScheduleService(task_repo, schedule_repo, fixed_event_repo)
+    schedule_service = ScheduleService(task_repo, schedule_repo, fixed_event_repo, settings_repo)
     history_service = HistoryService(history_repo)
+    settings_service = SettingsService(settings_repo)
     reconciliation_service = ReconciliationService(
         task_repo, schedule_service, app_state_repo, history_service
     )
@@ -146,6 +148,7 @@ def main() -> int:
     window = build_main_window(
         task_service, schedule_service, project_repo, category_repo,
         recurrence_service=recurrence_service,
+        settings_service=settings_service,
         reconciliation_service=reconciliation_service,
         notification_service=notification_service,
         app_state_repository=app_state_repo,

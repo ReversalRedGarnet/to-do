@@ -21,11 +21,13 @@ from app.ui.widgets.task_card import TaskCard
 
 
 class TodayPanel(QWidget):
-    def __init__(self, task_service, schedule_service, category_repository, parent=None):
+    def __init__(self, task_service, schedule_service, category_repository,
+                 recurrence_service=None, parent=None):
         super().__init__(parent)
         self._task_service = task_service
         self._schedule_service = schedule_service
         self._categories = category_repository
+        self._recurrence_service = recurrence_service
 
         outer = QVBoxLayout(self)
         self._entry = QuickTaskEntry(task_service)
@@ -76,7 +78,10 @@ class TodayPanel(QWidget):
         self.refresh()
 
     def _on_edit(self, task, categories) -> None:
-        dialog = TaskEditorDialog(task, categories, self._task_service, self)
+        dialog = TaskEditorDialog(
+            task, categories, self._task_service,
+            recurrence_service=self._recurrence_service, parent=self,
+        )
         if dialog.exec():
             self.refresh()
 
@@ -124,15 +129,18 @@ def _install_rollover_timer(
 
 def build_main_window(
     task_service, schedule_service, project_repository, category_repository,
-    *, reconciliation_service=None, notification_service=None, app_state_repository=None,
+    *, recurrence_service=None, reconciliation_service=None,
+    notification_service=None, app_state_repository=None,
 ):
     """Constructs the QMainWindow. Caller (main.py) owns the QApplication
     and event loop — this only builds the widget tree.
 
-    The three keyword-only services are optional so callers that don't
-    need midnight-rollover detection (tests, throwaway driver scripts)
-    can omit them; when all three are given, a QTimer watches for the
-    date changing while the app stays open (spec §19) and re-runs
+    All keyword-only services are optional so callers that don't need
+    them (tests, throwaway driver scripts) can omit them.
+    `recurrence_service` enables the "Repeats" control in the task editor.
+    When `reconciliation_service`/`notification_service`/
+    `app_state_repository` are all given, a QTimer watches for the date
+    changing while the app stays open (spec §19) and re-runs
     reconciliation + a single notify_day_rollover in place, without a
     restart."""
     window = QMainWindow()
@@ -149,13 +157,13 @@ def build_main_window(
 
     stack = QStackedWidget()
 
-    today_panel = TodayPanel(task_service, schedule_service, category_repository)
+    today_panel = TodayPanel(task_service, schedule_service, category_repository, recurrence_service)
     stack.addWidget(today_panel)
 
     week_panel = QWidget()
     week_layout = QVBoxLayout(week_panel)
     week_entry = QuickTaskEntry(task_service)
-    week_board = WeeklyBoard(task_service, schedule_service, category_repository)
+    week_board = WeeklyBoard(task_service, schedule_service, category_repository, recurrence_service)
     week_entry.task_created.connect(lambda _id: week_board.refresh())
 
     generate_button = QPushButton("Generate Week")

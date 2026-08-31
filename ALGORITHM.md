@@ -76,3 +76,34 @@ rollover ran, that day was never closed out, so it still needs replaying.
 Each replayed day applies missed-task logic and archives/purges weekly
 history when that day is a Sunday (end of its week), before computing
 today's board.
+
+`ReconciliationService.run` (wraps `reconcile`) also repairs one specific
+data-integrity drift on every pass (spec §52): a task left marked
+SCHEDULED with a `current_scheduled_date` but no matching `task_schedule`
+row (possible if the app crashed between `ScheduleService.generate_week`
+persisting the schedule and updating each task's status) is reset to
+PENDING so the next Generate Week picks it back up.
+
+## Recurrence
+
+`core/recurrence_engine.generate_next_occurrence(rule, after_date)`
+returns the next occurrence date strictly after `after_date`:
+
+```
+daily            -> after_date + interval days
+weekly           -> after_date + interval * 7 days
+monthly          -> same day-of-month, interval months later,
+                    clamped to the target month's last day
+                    (e.g. Jan 31 + 1 month -> Feb 28/29)
+custom_weekdays  -> the next date (within 7 days) whose weekday
+                    is in the rule's weekday set; interval is
+                    not used for this frequency
+```
+
+Recurring definitions persist indefinitely; occurrences do not
+(spec §44). `services/recurrence_service.ensure_next_occurrence`, called
+from `TaskService.complete_task` when the completed task has a
+`recurrence_rule_id`, never mutates the just-completed task — it only
+ever `create()`s a brand-new Task row for the next occurrence, shifted by
+the same delta as the rule's next-anchor calculation so the
+available_from/due_date window shape is preserved.

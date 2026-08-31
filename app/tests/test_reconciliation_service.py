@@ -86,6 +86,37 @@ def test_run_persists_missed_task_state(wiring):
     assert wiring["app_state_repo"].get_last_known_date() == tuesday
 
 
+def test_run_repairs_scheduled_task_with_no_matching_schedule_row(wiring):
+    """Simulates a crash between ScheduleService.generate_week's replace_week
+    commit and its per-task status-update commits: a task left SCHEDULED
+    with a current_scheduled_date but no task_schedule row to back it up."""
+    task_repo = wiring["task_repo"]
+    task_id = task_repo.create(make_task(current_scheduled_date=MONDAY))
+    # Deliberately no schedule_repo.replace_week call — the row is missing.
+
+    wiring["reconciliation_service"].run(MONDAY)
+
+    repaired = task_repo.get_by_id(task_id)
+    assert repaired.status == TaskStatus.PENDING
+    assert repaired.current_scheduled_date is None
+
+
+def test_run_leaves_consistent_scheduled_task_untouched(wiring):
+    task_repo = wiring["task_repo"]
+    task_id = task_repo.create(make_task(current_scheduled_date=MONDAY))
+    wiring["schedule_repo"].replace_week(
+        MONDAY,
+        [ScheduleEntry(id=None, task_id=task_id, week_start=MONDAY,
+                        scheduled_date=MONDAY, schedule_reason="TEST")],
+    )
+
+    wiring["reconciliation_service"].run(MONDAY)
+
+    unchanged = task_repo.get_by_id(task_id)
+    assert unchanged.status == TaskStatus.SCHEDULED
+    assert unchanged.current_scheduled_date == MONDAY
+
+
 def test_run_archives_week_via_history_service_on_boundary_crossing(wiring):
     task_repo = wiring["task_repo"]
     task_id = task_repo.create(make_task())

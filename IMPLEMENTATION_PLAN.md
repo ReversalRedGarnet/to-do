@@ -183,10 +183,33 @@ end-to-end via the driven UI session above.**
 - [x] Projects (`test_projects.py`, 4/4 passing) — `TaskService.
       project_progress` / `next_actionable_item`, wired into
       `ProjectView`
-- [ ] `core/recurrence_engine.generate_next_occurrence` — still
-      `NotImplementedError`; no recurring-task UI yet
-- [ ] Corrupted/missing schedule recovery paths beyond what
-      `week_is_planned` + the Generate Week button already provide
+- [x] Recurrence (spec §44): new `app/models/recurrence.py`
+      (`RecurrenceRule`/`RecurrenceFrequency`) + `RecurrenceRepository`,
+      filled in `core/recurrence_engine.generate_next_occurrence` (daily/
+      weekly/monthly-with-month-end-clamping/custom-weekdays), and
+      `services/recurrence_service.py` (`set_recurrence`,
+      `clear_recurrence`, `ensure_next_occurrence`). Wired into
+      `TaskService.complete_task`: completing a recurring task spawns the
+      next occurrence as a **new** Task row via `create()` — the
+      just-completed row is never mutated beyond its own COMPLETED
+      status/`completed_at`, confirmed by
+      `test_recurrence_service.py::test_completing_a_recurring_task_keeps_original_row_intact_and_spawns_next`.
+      Usable through the app itself, not just seed data: `TaskEditorDialog`
+      gained a "Repeats" frequency dropdown, an interval spinner, and
+      weekday checkboxes for the custom case — covered end-to-end by
+      `test_task_editor_recurrence.py` (constructs the real dialog widget,
+      not a stand-in).
+- [x] Schedule-consistency repair (spec §52 "corrupted/missing weekly
+      schedule"): `ScheduleService.generate_week` persists `task_schedule`
+      rows and then updates each task's status in separate commits — a
+      crash between those two steps could strand a task marked SCHEDULED
+      with no matching schedule row. `ReconciliationService.run` now
+      detects and resets exactly that drift on every pass (startup and
+      the mid-session timer), tested in `test_reconciliation_service.py`.
+- [x] Tests: `test_recurrence.py` (10, pure engine math incl. month-end
+      edge case), `test_recurrence_service.py` (4), `test_task_editor_recurrence.py`
+      (5), plus 2 new `test_reconciliation_service.py` cases for the
+      drift repair — 88/88 passing overall.
 
 ## Phase 9 — UX polish (separable, may slip)
 

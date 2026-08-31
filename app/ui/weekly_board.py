@@ -39,11 +39,13 @@ class _DeferDialog(QDialog):
 
 
 class WeeklyBoard(QWidget):
-    def __init__(self, task_service, schedule_service, category_repository, parent=None):
+    def __init__(self, task_service, schedule_service, category_repository,
+                 recurrence_service=None, parent=None):
         super().__init__(parent)
         self._task_service = task_service
         self._schedule_service = schedule_service
         self._categories = category_repository
+        self._recurrence_service = recurrence_service
         self._week_start = week_start(date.today())
 
         self._columns = {}
@@ -121,6 +123,9 @@ class WeeklyBoard(QWidget):
             self.refresh()
 
     def _on_edit(self, task, categories) -> None:
-        dialog = TaskEditorDialog(task, categories, self._task_service, self)
+        dialog = TaskEditorDialog(
+            task, categories, self._task_service,
+            recurrence_service=self._recurrence_service, parent=self,
+        )
         if dialog.exec() == QDialog.Accepted:
             self.refresh()

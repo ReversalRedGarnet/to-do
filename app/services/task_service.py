@@ -17,9 +17,10 @@ def _iso_week(d: date) -> str:
 
 
 class TaskService:
-    def __init__(self, task_repository, notification_service):
+    def __init__(self, task_repository, notification_service, recurrence_service=None):
         self._tasks = task_repository
         self._notifications = notification_service
+        self._recurrence = recurrence_service
 
     def create_task(
         self,
@@ -64,11 +65,21 @@ class TaskService:
         return self._tasks.get_by_id(task_id)
 
     def complete_task(self, task_id: int, completed_on: Optional[date] = None) -> Task:
+        """Marks `task_id` complete — its row keeps its own id and
+        COMPLETED status permanently (never deleted/overwritten), so
+        today's board and history still show it correctly. If it's
+        recurring, this also spawns the next occurrence as a brand new
+        Task row (spec §44) via RecurrenceService — never by mutating
+        this one."""
         task = self._tasks.get_by_id(task_id)
         task.status = TaskStatus.COMPLETED
         task.completed_at = completed_on or date_service.today()
         task.progress = 100
         self._tasks.update(task)
+
+        if self._recurrence is not None and task.recurrence_rule_id is not None:
+            self._recurrence.ensure_next_occurrence(task)
+
         return task
 
     def defer_task(self, task_id: int, defer_to_date: date, today: Optional[date] = None) -> Task:

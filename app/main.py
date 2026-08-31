@@ -26,6 +26,7 @@ from app.database.repositories.category_repository import CategoryRepository
 from app.database.repositories.fixed_event_repository import FixedEventRepository
 from app.database.repositories.history_repository import HistoryRepository
 from app.database.repositories.project_repository import ProjectRepository
+from app.database.repositories.recurrence_repository import RecurrenceRepository
 from app.database.repositories.schedule_repository import ScheduleRepository
 from app.database.repositories.settings_repository import SettingsRepository
 from app.database.repositories.task_repository import TaskRepository
@@ -33,6 +34,7 @@ from app.logging_config import configure_logging
 from app.notifications.notification_service import WindowsNotificationService
 from app.services.history_service import HistoryService
 from app.services.reconciliation_service import ReconciliationService
+from app.services.recurrence_service import RecurrenceService
 from app.services.schedule_service import ScheduleService
 from app.services.task_service import TaskService
 from app.ui.main_window import build_main_window
@@ -106,10 +108,12 @@ def main() -> int:
     app_state_repo = AppStateRepository(conn)
     history_repo = HistoryRepository(conn)
     settings_repo = SettingsRepository(conn)
+    recurrence_repo = RecurrenceRepository(conn)
 
     notification_service = WindowsNotificationService(settings_repo)
 
-    task_service = TaskService(task_repo, notification_service)
+    recurrence_service = RecurrenceService(task_repo, recurrence_repo)
+    task_service = TaskService(task_repo, notification_service, recurrence_service)
     schedule_service = ScheduleService(task_repo, schedule_repo, fixed_event_repo)
     history_service = HistoryService(history_repo)
     reconciliation_service = ReconciliationService(
@@ -139,6 +143,7 @@ def main() -> int:
     app = QApplication(sys.argv)
     window = build_main_window(
         task_service, schedule_service, project_repo, category_repo,
+        recurrence_service=recurrence_service,
         reconciliation_service=reconciliation_service,
         notification_service=notification_service,
         app_state_repository=app_state_repo,

@@ -7,8 +7,12 @@ venv/
 
 dist/
 build/
+# TaskPlanner.spec is checked in deliberately (Phase 10) — ignore any
+# other/regenerated spec files only.
 *.spec
+!TaskPlanner.spec
 
 *.db
 *.log
 pyinstaller_out.log
+pyinstaller_build.log

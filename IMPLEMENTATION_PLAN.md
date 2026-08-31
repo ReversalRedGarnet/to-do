@@ -256,9 +256,33 @@ end-to-end via the driven UI session above.**
 
 ## Phase 10 — Packaging (separable, may slip)
 
-- [ ] PyInstaller build, asset bundling, DB/config path resolution
-- [ ] **Flag to user rather than guess** if this sandbox isn't a real
-      Windows machine capable of producing the native .exe
+- [x] This environment is confirmed to be a real Windows machine (the
+      Phase 1 notification spike's frozen exe and toast both ran here),
+      so packaging was never actually blocked — flagging that
+      explicitly rather than assuming, per the original brief.
+- [x] `TaskPlanner.spec` checked in at the repo root (onedir, chosen over
+      onefile — a Qt onefile build re-extracts everything to a temp dir
+      on every launch, a real startup-latency cost with no portability
+      upside for this use case). `pyinstaller TaskPlanner.spec` builds
+      `dist/TaskPlanner/TaskPlanner.exe` + `_internal/`.
+- [x] `default_db_path()`'s `%APPDATA%` resolution was verified
+      **empirically**, not assumed safe from reading the code (it has no
+      `sys.executable`/`__file__` dependency, but that's exactly the kind
+      of thing PyInstaller can surprise you on): built the spec, launched
+      the frozen exe for real, confirmed it created
+      `%APPDATA%/TaskPlanner/task_planner.db` fresh with the full schema
+      and seeded categories — not a file next to the exe. Then wrote a
+      task from the unfrozen `python -m app.main` dev process and
+      confirmed the frozen exe's next launch saw it (and vice versa),
+      proving both resolve to the identical store rather than two
+      different databases.
+- [x] Launched the final `--windowed` (no console) build and confirmed
+      via `Get-Process` that a real "My Week" window opens with no
+      console attached, plus a genuine desktop screenshot (not an
+      in-process Qt render) showing the packaged app's window.
+- [x] No asset bundling was needed — the app has no icons/fonts/data
+      files beyond what PySide6/winotify's own PyInstaller hooks already
+      handle automatically (confirmed by the clean build + clean run).
 
 ---
 

@@ -12,10 +12,11 @@ scoring, weekly scheduling, week/today views, complete/defer, color
 state, multi-day rollover reconciliation) plus real Windows toast
 notifications (winotify), a mid-session midnight-rollover timer,
 recurring tasks (daily/weekly/monthly/custom-weekdays, editable from the
-task editor), keyboard shortcuts (§50), and system-aware dark mode —
-105/105 tests passing. A Settings screen is not wired up yet. See
-`IMPLEMENTATION_PLAN.md` for the phase-by-phase status and
-`ARCHITECTURE.md` / `ALGORITHM.md` for design details.
+task editor), keyboard shortcuts (§50), system-aware dark mode, and a
+packaged Windows build (see below) — 105/105 tests passing. A Settings
+screen is not wired up yet. See `IMPLEMENTATION_PLAN.md` for the
+phase-by-phase status and `ARCHITECTURE.md` / `ALGORITHM.md` for design
+details.
 
 ## Running
 
@@ -33,11 +34,17 @@ pytest
 ## Building the Windows executable
 
 ```
-pyinstaller --name TaskPlanner --windowed app/main.py
+pyinstaller TaskPlanner.spec
 ```
 
-Note: build the `.exe` on an actual Windows machine — cross-compiling from
-another OS is unreliable.
+Produces `dist/TaskPlanner/TaskPlanner.exe` plus its `_internal/`
+dependencies (a onedir build — faster startup than onefile, which
+re-extracts everything to a temp dir on every launch). Note: build the
+`.exe` on an actual Windows machine — cross-compiling from another OS is
+unreliable. The app's data directory (`%APPDATA%/TaskPlanner/`) is
+identical whether running frozen or via `python -m app.main` — verified
+empirically by writing a task from one and reading it back from the
+other, not just by inspecting `default_db_path()`'s source.
 
 ## Project layout
 

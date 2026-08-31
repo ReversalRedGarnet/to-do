@@ -35,13 +35,23 @@ in the production UI.
 ## Packaging
 
 ```
-pyinstaller --name TaskPlanner --windowed app/main.py
+pyinstaller TaskPlanner.spec
 ```
 
-Build the Windows `.exe` on an actual Windows machine. Before relying on
-notifications in the packaged build, confirm the chosen toast library
-(winotify or win11toast) actually fires from a frozen exe — this was
-flagged as a Phase 1 spike for exactly this reason.
+Onedir build (`dist/TaskPlanner/TaskPlanner.exe` + `_internal/`) — chosen
+over onefile since a Qt app's onefile mode re-extracts everything to a
+temp dir on every launch, a noticeably slower startup for no real
+portability benefit here. Build the Windows `.exe` on an actual Windows
+machine.
+
+`winotify` (the toast library, chosen in the Phase 1 spike) and
+`default_db_path()`'s `%APPDATA%` resolution were both re-verified
+against the actual frozen build, not assumed to still work post-freeze:
+the frozen exe was launched for real, confirmed it read/wrote the same
+`%APPDATA%/TaskPlanner/task_planner.db` as an unfrozen `python -m
+app.main` run (a task written by one was visible to the other — ruling
+out the classic `sys.executable`-vs-`__file__` PyInstaller path trap),
+and the toast fired and was visually confirmed.
 
 ## Logging
 

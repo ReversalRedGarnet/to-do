@@ -2,6 +2,6 @@ PySide6>=6.7
 pytest>=8.0
 pyinstaller>=6.0
 
-# Notification library — pick one during the Phase 1 spike and remove the other.
-# winotify>=1.1
-# win11toast>=0.35
+# Chosen in the Phase 1 notification spike (fires correctly from a
+# PyInstaller-frozen exe — see scripts/notification_spike.py).
+winotify>=1.1

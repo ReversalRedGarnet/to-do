@@ -32,9 +32,30 @@ never imports PySide6.
 
 ## Data flow
 
-TODO: fill in once the vertical slice (SQLite → task creation → priority
-calculation → scheduling → week view → complete/defer → state transitions)
-is working end to end.
+The vertical slice works end to end. On startup (`app/main.py`):
+
+1. `database.db.initialize_database` applies `schema.py`'s DDL and seeds
+   default categories/settings/app_state rows if missing.
+2. `core.date_service.today()` + `AppStateRepository.get_last_known_date()`
+   feed `core.state_engine.reconcile()`. Its `db_state["schedule"]` is
+   built by `ScheduleService.get_task_ids_between`, which spans however
+   many weeks the gap covers (repositories are queried per-week, since
+   `task_schedule` rows are stored keyed by `week_start`).
+3. `reconcile()`'s mutated tasks are persisted back via
+   `TaskRepository.update`; any `weeks_archived` entries are persisted via
+   `HistoryService.apply_reconciliation_archives`; only then is
+   `last_known_date` advanced to today.
+4. `ui.main_window.build_main_window` wires `TaskService` / `ScheduleService`
+   / repositories into the Today, This Week, and Projects panels. Every
+   panel calls services only — never repositories or core engines directly.
+5. Creating a task (`QuickTaskEntry` → `TaskService.create_task`) does not
+   put it on any board by itself — a task only appears under a day once
+   `ScheduleService.generate_week` (the "Generate Week" button) has run
+   and produced `task_schedule` rows for it. This matches spec §45: the
+   app never auto-schedules without the user asking it to.
+6. Complete/Defer/Edit on a card call `TaskService` (task-level fields)
+   and, for Defer/Move, `ScheduleService.move_task` (the persisted
+   `task_schedule` row) together — see `ui/weekly_board.py`.
 
 ## Database
 

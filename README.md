@@ -7,9 +7,12 @@ You enter tasks and obligations; the app evaluates them against urgency,
 importance, consequence, deadline pressure, effort, and project relationships,
 and distributes them across the days of the week — not exact times.
 
-**Status:** skeleton / not yet implemented. See `IMPLEMENTATION_PLAN.md`
-(generated once implementation starts) and `ARCHITECTURE.md` / `ALGORITHM.md`
-below for design details.
+**Status:** vertical slice working end to end (task creation, priority
+scoring, weekly scheduling, week/today views, complete/defer, color
+state, multi-day rollover reconciliation) — 46/46 tests passing. Real
+Windows notifications, recurring tasks, and a Settings screen are not
+wired up yet. See `IMPLEMENTATION_PLAN.md` for the phase-by-phase status
+and `ARCHITECTURE.md` / `ALGORITHM.md` for design details.
 
 ## Running
 

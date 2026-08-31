@@ -68,6 +68,11 @@ to make realistic room.
 ## Rollover behavior
 
 `core/state_engine.reconcile(last_known_date, today, db_state)` replays
-each intervening day in order (not a jump-to-today shortcut), applying
-missed-task logic and archiving/purging weekly history on any day that
-crosses a week boundary, before computing today's board.
+each day from `last_known_date` up to (excluding) `today`, in order (not
+a jump-to-today shortcut). The replay starts *at* `last_known_date`
+itself, not the day after — `last_known_date` is only the last day whose
+board was computed; if the app was closed before its own midnight
+rollover ran, that day was never closed out, so it still needs replaying.
+Each replayed day applies missed-task logic and archives/purges weekly
+history when that day is a Sunday (end of its week), before computing
+today's board.

@@ -11,8 +11,10 @@ from PySide6.QtWidgets import (
 
 from app.core.date_service import week_start
 from app.core.state_engine import derive_color
+from app.models.task import TaskStatus
 from app.ui.task_editor import TaskEditorDialog
 from app.ui.widgets.task_card import TaskCard
+from app.ui.widgets.task_selection_mixin import TaskSelectionMixin
 
 _DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
@@ -38,7 +40,7 @@ class _DeferDialog(QDialog):
         return self._date_edit.date().toPython()
 
 
-class WeeklyBoard(QWidget):
+class WeeklyBoard(QWidget, TaskSelectionMixin):
     def __init__(self, task_service, schedule_service, category_repository,
                  recurrence_service=None, parent=None):
         super().__init__(parent)
@@ -47,6 +49,7 @@ class WeeklyBoard(QWidget):
         self._categories = category_repository
         self._recurrence_service = recurrence_service
         self._week_start = week_start(date.today())
+        self._init_selection()
 
         self._columns = {}
         self._build_layout()
@@ -90,6 +93,7 @@ class WeeklyBoard(QWidget):
     def refresh(self) -> None:
         schedule = self._schedule_service.get_week(self._week_start)
         categories = self._categories.list_all()
+        still_present_ids = set()
 
         for day_date, container in self._columns.items():
             while container.count() > 1:  # keep the trailing stretch
@@ -100,15 +104,21 @@ class WeeklyBoard(QWidget):
             entries = schedule.get(day_date, [])
             for entry in entries:
                 task = self._task_service.get_task(entry.task_id)
-                if task is None:
+                if task is None or task.status == TaskStatus.CANCELLED:
                     continue
+                still_present_ids.add(task.id)
                 context = {"expected_date": entry.scheduled_date}
                 color = derive_color(task, date.today(), context)
                 card = TaskCard(task, color)
+                card.set_selected(task.id == self._selected_task_id)
                 card.complete_clicked.connect(self._on_complete)
                 card.defer_clicked.connect(self._on_defer)
                 card.edit_clicked.connect(lambda tid, t=task, cats=categories: self._on_edit(t, cats))
+                card.card_clicked.connect(self._handle_card_click)
                 container.insertWidget(container.count() - 1, card)
+
+        if self._selected_task_id not in still_present_ids:
+            self._selected_task_id = None
 
     def _on_complete(self, task_id: int) -> None:
         self._task_service.complete_task(task_id)
@@ -129,3 +139,35 @@ class WeeklyBoard(QWidget):
         )
         if dialog.exec() == QDialog.Accepted:
             self.refresh()
+
+    def edit_selected(self) -> None:
+        if self._selected_task_id is None:
+            return
+        task = self._task_service.get_task(self._selected_task_id)
+        if task is not None:
+            self._on_edit(task, self._categories.list_all())
+
+    def defer_selected(self) -> None:
+        if self._selected_task_id is not None:
+            self._on_defer(self._selected_task_id)
+
+    def cancel_selected(self) -> None:
+        if self._selected_task_id is None:
+            return
+        self._task_service.cancel_task(self._selected_task_id)
+        self._selected_task_id = None
+        self.refresh()
+
+    def activate_selected(self) -> None:
+        """Enter: a pending/scheduled/deferred task is completed; an
+        already-completed task opens its editor instead (spec §50 "Enter
+        -> complete/open task depending on context")."""
+        if self._selected_task_id is None:
+            return
+        task = self._task_service.get_task(self._selected_task_id)
+        if task is None:
+            return
+        if task.status == TaskStatus.COMPLETED:
+            self._on_edit(task, self._categories.list_all())
+        else:
+            self._on_complete(task.id)

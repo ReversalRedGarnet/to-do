@@ -213,7 +213,46 @@ end-to-end via the driven UI session above.**
 
 ## Phase 9 — UX polish (separable, may slip)
 
-- [ ] Keyboard shortcuts (§50), context menus, icons, styling, dark mode
+- [x] Card selection model (`app/ui/widgets/task_selection_mixin.py` +
+      `TaskCard.card_clicked`/`set_selected`): clicking a card highlights
+      it with a blue outline distinct from the state-color stripe.
+      Required groundwork for keyboard shortcuts — cards weren't
+      selectable/focusable at all before this.
+- [x] Keyboard shortcuts (spec §50): `Ctrl+N` focuses the active panel's
+      quick-add, `Ctrl+W`/`Ctrl+T`/`Ctrl+P` switch views, `Ctrl+E`/`D`/
+      `Delete`/`Enter` act on the selected task in whichever of Today/
+      This Week is active (no-op on Projects, which has no selectable
+      tasks). Per your two amendments: (1) all four act-on-selection
+      shortcuts simply do nothing when nothing is selected — no
+      fallback to "first card" (`test_nothing_selected_shortcuts_are_a_no_op`);
+      (2) selection clears on view switch, wired into the sidebar's
+      `currentRowChanged` handler so it fires the same way whether
+      triggered by a mouse click or a `Ctrl+W/T/P` shortcut
+      (`test_view_switch_clears_selection`). None of the shortcuts fire
+      while a text field has focus (checked via `QApplication.focusWidget()`).
+      **Enter's documented rule**: a pending/scheduled/deferred task is
+      completed; an already-completed task opens its editor instead —
+      see `TodayPanel.activate_selected`/`WeeklyBoard.activate_selected`'s
+      docstrings and `test_activate_selected_opens_editor_for_completed_task`.
+- [x] Dark mode (spec §49, "if practical"): `app/ui/theme.py` detects the
+      OS color scheme via `QGuiApplication.styleHints().colorScheme()`
+      (Qt 6.5+) and, only when dark, switches to the Fusion style with an
+      explicit dark `QPalette` — the native Windows style doesn't repaint
+      from a palette change alone. The six state colors are saturated
+      border accents, not fills, so they stay legible unchanged in both
+      modes — visually confirmed via screenshot (yellow stripe still
+      reads clearly against the dark card background).
+- [x] Explicitly skipped per spec: context menus (no spec requirement,
+      every action already has a button) and drag-and-drop (spec calls
+      it "desirable but not mandatory," and Defer/Move already are the
+      required non-drag alternative).
+- [x] Tests: `test_ui_selection_and_shortcuts.py` (10, panel-level
+      selection/activate/defer/cancel logic against a real temp DB) and
+      `test_shortcuts_and_theme.py` (7, drives the *real*
+      `build_main_window` + `QShortcut`s via `QTest.keySequence`, plus the
+      theme switch) — 105/105 passing overall. Modal dialogs
+      (`TaskEditorDialog`, `_DeferDialog`) are monkeypatched to
+      auto-accept in these tests so they don't block on a real event loop.
 
 ## Phase 10 — Packaging (separable, may slip)
 

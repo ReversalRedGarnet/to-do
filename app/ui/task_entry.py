@@ -24,6 +24,9 @@ class QuickTaskEntry(QWidget):
         add_button.clicked.connect(self._submit)
         layout.addWidget(add_button)
 
+    def focus_input(self) -> None:
+        self._input.setFocus()
+
     def _submit(self) -> None:
         title = self._input.text().strip()
         if not title:

@@ -3,24 +3,28 @@ No business logic here — delegate to app.services.*"""
 
 from datetime import date
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, Qt
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QHBoxLayout, QListWidget, QListWidgetItem, QMainWindow, QPushButton,
-    QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
+    QApplication, QComboBox, QDateEdit, QHBoxLayout, QLineEdit, QListWidget,
+    QListWidgetItem, QMainWindow, QPushButton, QScrollArea, QSpinBox,
+    QStackedWidget, QTextEdit, QVBoxLayout, QWidget,
 )
 
 from app.config.settings import ROLLOVER_CHECK_INTERVAL_SECONDS
 from app.core import date_service
 from app.core.date_service import week_start
 from app.core.state_engine import derive_color
+from app.models.task import TaskStatus
 from app.ui.project_view import ProjectView
 from app.ui.task_editor import TaskEditorDialog
 from app.ui.task_entry import QuickTaskEntry
 from app.ui.weekly_board import WeeklyBoard
 from app.ui.widgets.task_card import TaskCard
+from app.ui.widgets.task_selection_mixin import TaskSelectionMixin
 
 
-class TodayPanel(QWidget):
+class TodayPanel(QWidget, TaskSelectionMixin):
     def __init__(self, task_service, schedule_service, category_repository,
                  recurrence_service=None, parent=None):
         super().__init__(parent)
@@ -28,6 +32,7 @@ class TodayPanel(QWidget):
         self._schedule_service = schedule_service
         self._categories = category_repository
         self._recurrence_service = recurrence_service
+        self._init_selection()
 
         outer = QVBoxLayout(self)
         self._entry = QuickTaskEntry(task_service)
@@ -44,6 +49,9 @@ class TodayPanel(QWidget):
 
         self.refresh()
 
+    def focus_quick_add(self) -> None:
+        self._entry.focus_input()
+
     def refresh(self) -> None:
         while self._list_layout.count() > 1:
             item = self._list_layout.takeAt(0)
@@ -55,16 +63,23 @@ class TodayPanel(QWidget):
         entries = schedule.get(today, [])
         categories = self._categories.list_all()
 
+        still_present_ids = set()
         for entry in entries:
             task = self._task_service.get_task(entry.task_id)
-            if task is None:
+            if task is None or task.status == TaskStatus.CANCELLED:
                 continue
+            still_present_ids.add(task.id)
             color = derive_color(task, today, {"expected_date": entry.scheduled_date})
             card = TaskCard(task, color)
+            card.set_selected(task.id == self._selected_task_id)
             card.complete_clicked.connect(self._on_complete)
             card.defer_clicked.connect(self._on_defer)
             card.edit_clicked.connect(lambda tid, t=task, cats=categories: self._on_edit(t, cats))
+            card.card_clicked.connect(self._handle_card_click)
             self._list_layout.insertWidget(self._list_layout.count() - 1, card)
+
+        if self._selected_task_id not in still_present_ids:
+            self._selected_task_id = None
 
     def _on_complete(self, task_id: int) -> None:
         self._task_service.complete_task(task_id)
@@ -84,6 +99,38 @@ class TodayPanel(QWidget):
         )
         if dialog.exec():
             self.refresh()
+
+    def edit_selected(self) -> None:
+        if self._selected_task_id is None:
+            return
+        task = self._task_service.get_task(self._selected_task_id)
+        if task is not None:
+            self._on_edit(task, self._categories.list_all())
+
+    def defer_selected(self) -> None:
+        if self._selected_task_id is not None:
+            self._on_defer(self._selected_task_id)
+
+    def cancel_selected(self) -> None:
+        if self._selected_task_id is None:
+            return
+        self._task_service.cancel_task(self._selected_task_id)
+        self._selected_task_id = None
+        self.refresh()
+
+    def activate_selected(self) -> None:
+        """Enter: a pending/scheduled/deferred task is completed; an
+        already-completed task opens its editor instead (spec §50 "Enter
+        -> complete/open task depending on context")."""
+        if self._selected_task_id is None:
+            return
+        task = self._task_service.get_task(self._selected_task_id)
+        if task is None:
+            return
+        if task.status == TaskStatus.COMPLETED:
+            self._on_edit(task, self._categories.list_all())
+        else:
+            self._on_complete(task.id)
 
 
 def _install_rollover_timer(
@@ -125,6 +172,86 @@ def _install_rollover_timer(
     timer.timeout.connect(_check_rollover)
     timer.start(ROLLOVER_CHECK_INTERVAL_SECONDS * 1000)
     window._rollover_timer = timer  # keep a reference alive on the window
+
+
+_TEXT_INPUT_WIDGET_TYPES = (QLineEdit, QTextEdit, QSpinBox, QDateEdit, QComboBox)
+
+
+def _focused_widget_is_text_input() -> bool:
+    return isinstance(QApplication.focusWidget(), _TEXT_INPUT_WIDGET_TYPES)
+
+
+def _install_shortcuts(window, sidebar, today_panel, week_board, week_entry) -> None:
+    """Spec §50. Ctrl+E/D/Delete/Enter act on "the currently selected
+    task" in whichever of Today/This Week is active (Projects has no
+    selectable tasks, so they no-op there); none of them fire while a
+    text field has focus (don't hijack shortcuts while typing), and none
+    of them fall back to "first card" when nothing is selected — they
+    simply do nothing."""
+
+    def active_selectable_panel():
+        index = sidebar.currentRow()
+        if index == 0:
+            return today_panel
+        if index == 1:
+            return week_board
+        return None
+
+    def guarded(handler):
+        def wrapped():
+            if _focused_widget_is_text_input():
+                return
+            handler()
+        return wrapped
+
+    def new_task():
+        index = sidebar.currentRow()
+        if index == 0:
+            today_panel.focus_quick_add()
+        elif index == 1:
+            week_entry.focus_input()
+
+    def edit_selected():
+        panel = active_selectable_panel()
+        if panel is not None:
+            panel.edit_selected()
+
+    def defer_selected():
+        panel = active_selectable_panel()
+        if panel is not None:
+            panel.defer_selected()
+
+    def cancel_selected():
+        panel = active_selectable_panel()
+        if panel is not None:
+            panel.cancel_selected()
+
+    def activate_selected():
+        panel = active_selectable_panel()
+        if panel is not None:
+            panel.activate_selected()
+
+    shortcuts = [
+        QShortcut(QKeySequence("Ctrl+N"), window),
+        QShortcut(QKeySequence("Ctrl+W"), window),
+        QShortcut(QKeySequence("Ctrl+T"), window),
+        QShortcut(QKeySequence("Ctrl+P"), window),
+        QShortcut(QKeySequence("Ctrl+E"), window),
+        QShortcut(QKeySequence(Qt.Key.Key_D), window),
+        QShortcut(QKeySequence(Qt.Key.Key_Delete), window),
+        QShortcut(QKeySequence(Qt.Key.Key_Return), window),
+        QShortcut(QKeySequence(Qt.Key.Key_Enter), window),
+    ]
+    shortcuts[0].activated.connect(guarded(new_task))
+    shortcuts[1].activated.connect(guarded(lambda: sidebar.setCurrentRow(1)))
+    shortcuts[2].activated.connect(guarded(lambda: sidebar.setCurrentRow(0)))
+    shortcuts[3].activated.connect(guarded(lambda: sidebar.setCurrentRow(2)))
+    shortcuts[4].activated.connect(guarded(edit_selected))
+    shortcuts[5].activated.connect(guarded(defer_selected))
+    shortcuts[6].activated.connect(guarded(cancel_selected))
+    shortcuts[7].activated.connect(guarded(activate_selected))
+    shortcuts[8].activated.connect(guarded(activate_selected))
+    window._shortcuts = shortcuts  # keep references alive on the window
 
 
 def build_main_window(
@@ -179,13 +306,22 @@ def build_main_window(
     project_panel = ProjectView(project_repository, task_service)
     stack.addWidget(project_panel)
 
-    sidebar.currentRowChanged.connect(stack.setCurrentIndex)
+    def _on_sidebar_row_changed(index: int) -> None:
+        # Selection clears on view switch rather than persisting invisibly
+        # in a panel that's no longer shown (spec §50).
+        today_panel.clear_selection()
+        week_board.clear_selection()
+        stack.setCurrentIndex(index)
+
+    sidebar.currentRowChanged.connect(_on_sidebar_row_changed)
     sidebar.setCurrentRow(0)
 
     root_layout.addWidget(sidebar)
     root_layout.addWidget(stack, stretch=1)
 
     window.setCentralWidget(central)
+
+    _install_shortcuts(window, sidebar, today_panel, week_board, week_entry)
 
     if reconciliation_service is not None and notification_service is not None and app_state_repository is not None:
         _install_rollover_timer(

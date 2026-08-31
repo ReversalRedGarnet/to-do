@@ -68,6 +68,9 @@ class ScheduleService:
     def lock_task(self, task_id: int, week_start: date, locked: bool = True) -> None:
         self._schedules.set_locked(task_id, week_start, locked)
 
+    def get_fixed_events_between(self, start: date, end: date) -> list:
+        return self._fixed_events.list_between(start, end)
+
     def get_task_ids_between(self, start_date: date, end_date: date) -> dict:
         """date -> [task_id, ...] for every day in [start_date, end_date),
         spanning as many weeks as needed. Used by the startup reconciliation

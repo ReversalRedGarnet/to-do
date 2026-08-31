@@ -3,11 +3,14 @@ No business logic here — delegate to app.services.*"""
 
 from datetime import date
 
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
     QHBoxLayout, QListWidget, QListWidgetItem, QMainWindow, QPushButton,
     QScrollArea, QStackedWidget, QVBoxLayout, QWidget,
 )
 
+from app.config.settings import ROLLOVER_CHECK_INTERVAL_SECONDS
+from app.core import date_service
 from app.core.date_service import week_start
 from app.core.state_engine import derive_color
 from app.ui.project_view import ProjectView
@@ -78,9 +81,60 @@ class TodayPanel(QWidget):
             self.refresh()
 
 
-def build_main_window(task_service, schedule_service, project_repository, category_repository):
+def _install_rollover_timer(
+    window, reconciliation_service, notification_service, app_state_repository,
+    schedule_service, today_panel, week_board, project_panel,
+):
+    """Spec §19: a lightweight timer catches midnight passing while the app
+    stays open, instead of requiring a restart. Runs the same
+    ReconciliationService pass main.py uses at startup, then fires exactly
+    one notify_day_rollover — never the missed-task/weekly-plan startup
+    batch, which already ran once when the process launched (see
+    main.py._send_startup_notifications's docstring)."""
+    state = {"last_seen_today": date_service.today()}
+
+    def _check_rollover():
+        current = date_service.today()
+        if current == state["last_seen_today"]:
+            return
+
+        result = reconciliation_service.run(current)
+        state["last_seen_today"] = current
+
+        today_panel.refresh()
+        week_board.refresh()
+        project_panel.refresh()
+
+        if app_state_repository.get_last_notified_date() == current:
+            return
+        this_week_start = week_start(current)
+        todays_entries = schedule_service.get_week(this_week_start).get(current, [])
+        event_count = len(schedule_service.get_fixed_events_between(current, current))
+        notification_service.notify_day_rollover({
+            "priority_task_count": len(todays_entries),
+            "event_count": event_count,
+        })
+        app_state_repository.set_last_notified_date(current)
+
+    timer = QTimer(window)
+    timer.timeout.connect(_check_rollover)
+    timer.start(ROLLOVER_CHECK_INTERVAL_SECONDS * 1000)
+    window._rollover_timer = timer  # keep a reference alive on the window
+
+
+def build_main_window(
+    task_service, schedule_service, project_repository, category_repository,
+    *, reconciliation_service=None, notification_service=None, app_state_repository=None,
+):
     """Constructs the QMainWindow. Caller (main.py) owns the QApplication
-    and event loop — this only builds the widget tree."""
+    and event loop — this only builds the widget tree.
+
+    The three keyword-only services are optional so callers that don't
+    need midnight-rollover detection (tests, throwaway driver scripts)
+    can omit them; when all three are given, a QTimer watches for the
+    date changing while the app stays open (spec §19) and re-runs
+    reconciliation + a single notify_day_rollover in place, without a
+    restart."""
     window = QMainWindow()
     window.setWindowTitle("My Week")
     window.resize(1100, 700)
@@ -124,4 +178,10 @@ def build_main_window(task_service, schedule_service, project_repository, catego
     root_layout.addWidget(stack, stretch=1)
 
     window.setCentralWidget(central)
+
+    if reconciliation_service is not None and notification_service is not None and app_state_repository is not None:
+        _install_rollover_timer(
+            window, reconciliation_service, notification_service, app_state_repository,
+            schedule_service, today_panel, week_board, project_panel,
+        )
     return window

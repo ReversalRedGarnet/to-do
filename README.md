@@ -9,10 +9,11 @@ and distributes them across the days of the week — not exact times.
 
 **Status:** vertical slice working end to end (task creation, priority
 scoring, weekly scheduling, week/today views, complete/defer, color
-state, multi-day rollover reconciliation) — 46/46 tests passing. Real
-Windows notifications, recurring tasks, and a Settings screen are not
-wired up yet. See `IMPLEMENTATION_PLAN.md` for the phase-by-phase status
-and `ARCHITECTURE.md` / `ALGORITHM.md` for design details.
+state, multi-day rollover reconciliation) plus real Windows toast
+notifications (winotify) and a mid-session midnight-rollover timer —
+67/67 tests passing. Recurring tasks and a Settings screen are not wired
+up yet. See `IMPLEMENTATION_PLAN.md` for the phase-by-phase status and
+`ARCHITECTURE.md` / `ALGORITHM.md` for design details.
 
 ## Running
 

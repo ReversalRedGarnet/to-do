@@ -121,7 +121,10 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 
 CREATE TABLE IF NOT EXISTS app_state (
-    id               INTEGER PRIMARY KEY CHECK (id = 1),  -- singleton row
-    last_known_date  TEXT  -- ISO date; NULL until the first reconciliation pass completes
+    id                   INTEGER PRIMARY KEY CHECK (id = 1),  -- singleton row
+    last_known_date      TEXT,  -- ISO date; NULL until the first reconciliation pass completes
+    last_notified_date   TEXT   -- ISO date of the last startup/rollover notification batch,
+                                 -- so the startup pass and the mid-session timer can't both
+                                 -- fire the same day's notifications (spec §31 "avoid excessive")
 );
 """

@@ -135,13 +135,44 @@ end-to-end via the driven UI session above.**
 
 ## Phase 7 — Notifications (separable, may slip)
 
-- [x] Go/no-go spike passed (Phase 1)
-- [ ] Real `WindowsNotificationService` using `winotify`, wired into
-      `TaskService`/`main.py` in place of `NullNotificationService`
-- [ ] Wire `notify_task`, `notify_event`, `notify_weekly_plan_required`,
-      `notify_day_rollover` at the appropriate lifecycle points
-- [ ] Notification settings (enable/disable, Sunday reminder) + a real
-      Settings screen in the sidebar
+- [x] Go/no-go spike passed (Phase 1), **visually confirmed by the user**
+      on a real frozen exe — not just "didn't raise"
+- [x] Real `WindowsNotificationService` (`app/notifications/notification_service.py`)
+      using `winotify`, wired into `main.py` in place of `NullNotificationService`.
+      Reads `notifications_enabled` from the settings row on every call
+      (not cached at construction) and swallows+logs any failure so a
+      broken toast backend can never crash the app.
+- [x] Extended the `NotificationService` ABC with one new method,
+      `notify_missed_tasks(missed_tasks)` — spec §33 lists
+      notify_task/notify_event/notify_weekly_plan_required/notify_day_rollover
+      as "methods such as", not an exhaustive interface, and firing
+      `notify_task` once per missed task after a multi-day gap would be
+      exactly the spam spec §31 warns against. 1 missed task -> single
+      "You didn't complete: X"; 2+ -> one summary toast, titles capped at 3.
+- [x] `app/services/reconciliation_service.py` — extracted the
+      replay-and-persist logic out of `main.py` so both the startup path
+      and the new mid-session rollover timer share one implementation.
+- [x] `main._send_startup_notifications` — the startup batch: missed-task
+      summary, weekly plan reminder (fires from Sunday onward per
+      `_PLANNING_REMINDER_WEEKDAY`, gated on `sunday_reminder_enabled`),
+      today's fixed events, and the single highest-priority task due/
+      expected today. Guarded by a new `app_state.last_notified_date`
+      column so relaunching the app the same day, or the mid-session
+      timer catching up later, can't double-fire.
+- [x] Mid-session rollover timer (`ui/main_window._install_rollover_timer`),
+      interval pinned to `config.settings.ROLLOVER_CHECK_INTERVAL_SECONDS`
+      (5 min) per your amendment — detects the date advancing while the
+      app stays open (spec §19), re-runs `ReconciliationService`, refreshes
+      all three panels in place, and fires exactly one `notify_day_rollover`
+      — **never** the startup batch, per your second amendment (avoids
+      double-firing after a multi-day gap).
+- [x] Tests: `test_notifications.py` (8, winotify monkeypatched — disabled
+      setting, wording, missed-task summarization, broken-backend
+      swallowing), `test_reconciliation_service.py` (3), `test_startup_notifications.py`
+      (10, covering the Sunday/disabled/already-planned/double-fire cases)
+- [ ] A real Settings screen in the sidebar to edit `notifications_enabled`/
+      `sunday_reminder_enabled` — still Phase 8/9 scope; the settings row
+      exists and is read live, just not yet user-editable from the UI
 
 ## Phase 8 — Persistence / recovery polish
 

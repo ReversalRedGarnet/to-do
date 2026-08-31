@@ -46,6 +46,11 @@ DEADLINE_PLANNING_HORIZON_DAYS = 14
 ORANGE_THRESHOLD = 1  # missed opportunities
 RED_THRESHOLD = 3      # consecutive missed opportunities (eligible days only)
 
+# How often the running app checks for a midnight date rollover while open
+# (spec §19 — a lightweight timer, not a full restart). Separate from the
+# startup reconciliation pass, which always runs regardless of this.
+ROLLOVER_CHECK_INTERVAL_SECONDS = 5 * 60
+
 # Priority score component weights (must sum to 1.0).
 PRIORITY_WEIGHTS = {
     "importance": 0.30,

@@ -1,13 +1,18 @@
 """Phase 2: compact task editing — double-click opens the existing
 TaskEditorDialog directly, and Escape must close it without touching the
-DB (Qt's default QDialog reject path; save only ever happens in _save())."""
+DB (Qt's default QDialog reject path; save only ever happens in _save()).
+
+Also covers the editor's own Delete button (hardening follow-up): it must
+delegate to a caller-supplied `on_delete` callback — the exact same
+`_on_delete_requested` handler the context-menu path already uses, never
+a second delete implementation — and must never invoke `_save()`."""
 
 from datetime import date
 
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtWidgets import QApplication, QDialog, QPushButton
 
 from app.database.db import get_connection, initialize_database
 from app.database.repositories.category_repository import CategoryRepository
@@ -76,3 +81,70 @@ def test_escape_closes_editor_without_saving_changes(wiring):
     assert dialog.result() == QDialog.DialogCode.Rejected
     unchanged = wiring["task_repo"].get_by_id(task.id)
     assert unchanged.title == "Original title"
+
+
+def _find_delete_button(dialog):
+    for button in dialog.findChildren(QPushButton):
+        if button.text() == "Delete":
+            return button
+    return None
+
+
+def test_no_delete_button_when_on_delete_is_not_wired(wiring):
+    task = make_task(wiring)
+    dialog = TaskEditorDialog(task, wiring["category_repo"].list_all(), wiring["task_service"])
+
+    assert _find_delete_button(dialog) is None
+
+
+def test_delete_button_present_when_on_delete_is_wired(wiring):
+    task = make_task(wiring)
+    dialog = TaskEditorDialog(
+        task, wiring["category_repo"].list_all(), wiring["task_service"], on_delete=lambda tid: True,
+    )
+
+    assert _find_delete_button(dialog) is not None
+
+
+def test_delete_button_delegates_to_on_delete_and_closes_without_saving(wiring):
+    task = make_task(wiring)
+    dialog = TaskEditorDialog(
+        task, wiring["category_repo"].list_all(), wiring["task_service"], on_delete=lambda tid: True,
+    )
+    dialog._title.setText("Mutated but should never be saved")
+    update_calls = []
+    wiring["task_service"].update_task = lambda *a, **k: update_calls.append((a, k))
+
+    _find_delete_button(dialog).click()
+
+    assert update_calls == []  # _save() must never run on the delete path
+    assert dialog.result() == QDialog.DialogCode.Rejected
+
+
+def test_delete_button_passes_the_edited_tasks_id_to_on_delete(wiring):
+    task = make_task(wiring)
+    received = []
+    dialog = TaskEditorDialog(
+        task, wiring["category_repo"].list_all(), wiring["task_service"],
+        on_delete=lambda tid: received.append(tid) or True,
+    )
+
+    _find_delete_button(dialog).click()
+
+    assert received == [task.id]
+
+
+def test_delete_button_keeps_the_dialog_open_when_on_delete_declines(wiring):
+    """`on_delete` returns False when e.g. the confirmation prompt it
+    shows is declined — the editor must not close (or discard the
+    caller's in-progress edits) in that case."""
+    task = make_task(wiring)
+    dialog = TaskEditorDialog(
+        task, wiring["category_repo"].list_all(), wiring["task_service"], on_delete=lambda tid: False,
+    )
+    reject_calls = []
+    dialog.reject = lambda: reject_calls.append(True)
+
+    _find_delete_button(dialog).click()
+
+    assert reject_calls == []

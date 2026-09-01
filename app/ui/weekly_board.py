@@ -348,26 +348,32 @@ class WeeklyBoard(QWidget, TaskSelectionMixin):
         dialog = TaskEditorDialog(
             task, categories, self._task_service,
             recurrence_service=self._recurrence_service, project_repository=self._projects, parent=self,
+            on_delete=self._on_delete_requested,
         )
         if dialog.exec() == QDialog.Accepted:
             self.refresh()
 
-    def _on_delete_requested(self, task_id: int) -> None:
+    def _on_delete_requested(self, task_id: int) -> bool:
+        """Returns whether the task was actually deleted — lets the task
+        editor's own Delete button (see task_editor.py) know whether to
+        close itself, without this method needing to know it might be
+        called from there as well as from a card's context menu."""
         task = self._task_service.get_task(task_id)
         if task is None:
-            return
+            return False
         confirm = QMessageBox.question(
             self, "Delete Task",
             f'Delete "{task.title}"? Use Undo Delete right after if this was a mistake — '
             "it only works for the rest of this session.",
         )
         if confirm != QMessageBox.StandardButton.Yes:
-            return
+            return False
         self._last_deleted = self._task_service.delete_task(task_id)
         if self._selected_task_id == task_id:
             self._selected_task_id = None
         self.delete_undo_available_changed.emit(True)
         self.refresh()
+        return True
 
     def undo_last_delete(self) -> None:
         if self._last_deleted is None:

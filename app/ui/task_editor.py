@@ -56,11 +56,12 @@ class MoveToProjectDialog(QDialog):
 
 class TaskEditorDialog(QDialog):
     def __init__(self, task, categories, task_service, recurrence_service=None,
-                 project_repository=None, parent=None):
+                 project_repository=None, parent=None, *, on_delete=None):
         super().__init__(parent)
         self._task = task
         self._task_service = task_service
         self._recurrence_service = recurrence_service
+        self._on_delete = on_delete
         self.setWindowTitle(f"Edit — {task.title}")
 
         form = QFormLayout(self)
@@ -148,6 +149,9 @@ class TaskEditorDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self._save)
         buttons.rejected.connect(self.reject)
+        if self._on_delete is not None:
+            delete_button = buttons.addButton("Delete", QDialogButtonBox.ButtonRole.DestructiveRole)
+            delete_button.clicked.connect(self._on_delete_clicked)
         form.addRow(buttons)
 
     @staticmethod
@@ -193,3 +197,14 @@ class TaskEditorDialog(QDialog):
                 )
 
         self.accept()
+
+    def _on_delete_clicked(self) -> None:
+        """Delegates to the same `_on_delete_requested` handler the
+        context-menu path uses (confirmation + delete_task + Undo Delete)
+        — passed in by the caller as `on_delete`, never reimplemented
+        here. Closes without saving only if the delete actually went
+        through (the handler returns False if the user declined the
+        confirmation), so a cancelled delete leaves in-progress edits
+        intact rather than silently discarding them."""
+        if self._on_delete is not None and self._on_delete(self._task.id):
+            self.reject()

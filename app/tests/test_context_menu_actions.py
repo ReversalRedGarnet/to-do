@@ -22,6 +22,7 @@ from app.notifications.notification_service import NullNotificationService
 from app.services.schedule_service import ScheduleService
 from app.services.task_service import TaskService
 from app.ui.main_window import TodayPanel
+from app.ui.task_editor import TaskEditorDialog
 from app.ui.weekly_board import WeeklyBoard
 
 TODAY = date.today()
@@ -206,3 +207,46 @@ def test_delete_confirmation_declined_keeps_the_task(wiring, monkeypatch):
     panel._on_delete_requested(task_id)
 
     assert wiring["task_repo"].get_by_id(task_id) is not None
+
+
+# --- Delete from inside the task editor (same handler as the context menu) ---
+
+def test_today_panel_edit_dialog_delete_button_deletes_and_enables_undo(wiring):
+    """Drives the real button click rather than calling the handler
+    directly, confirming TaskEditorDialog's Delete button is wired to
+    the exact same TodayPanel handler the context menu uses, and that
+    Undo Delete restores the task afterward exactly as it does today."""
+    task_id = make_scheduled_task(wiring, title="Delete via editor")
+    panel = TodayPanel(wiring["task_service"], wiring["schedule_service"], wiring["category_repo"])
+    task = wiring["task_repo"].get_by_id(task_id)
+    dialog = TaskEditorDialog(
+        task, wiring["category_repo"].list_all(), wiring["task_service"],
+        on_delete=panel._on_delete_requested,
+    )
+
+    dialog._on_delete_clicked()
+
+    assert wiring["task_repo"].get_by_id(task_id) is None
+    assert dialog.result() == QDialog.DialogCode.Rejected
+    assert panel._undo_delete_button.isVisibleTo(panel) is True
+
+    panel._undo_delete()
+    assert "Delete via editor" in {t.title for t in wiring["task_service"].list_all()}
+
+
+def test_weekly_board_edit_dialog_delete_button_deletes_and_enables_undo(wiring):
+    task_id = make_scheduled_task(wiring, title="Board delete via editor")
+    board = WeeklyBoard(wiring["task_service"], wiring["schedule_service"], wiring["category_repo"])
+    task = wiring["task_repo"].get_by_id(task_id)
+    undo_states = []
+    board.delete_undo_available_changed.connect(undo_states.append)
+    dialog = TaskEditorDialog(
+        task, wiring["category_repo"].list_all(), wiring["task_service"],
+        on_delete=board._on_delete_requested,
+    )
+
+    dialog._on_delete_clicked()
+
+    assert wiring["task_repo"].get_by_id(task_id) is None
+    assert dialog.result() == QDialog.DialogCode.Rejected
+    assert undo_states == [True]

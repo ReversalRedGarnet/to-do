@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from app.core.priority_engine import (
     calculate_deadline_pressure,
     calculate_priority_score,
+    priority_label,
 )
 from app.models.task import Task, TaskStatus, TaskType
 
@@ -75,3 +76,19 @@ def test_overdue_deadline_receives_maximum_pressure():
 
 def test_no_due_date_has_zero_pressure():
     assert calculate_deadline_pressure(None, TODAY) == 0.0
+
+
+# - priority_label is a display-only derivation of the existing score,
+#   never a parallel field (see ARCHITECTURE.md's scoring engine note)
+def test_priority_label_buckets_the_existing_score():
+    assert priority_label(0.75) == "Low"
+    assert priority_label(2.25) == "Normal"
+    assert priority_label(3.5) == "High"
+    assert priority_label(5.0) == "Urgent"
+
+
+def test_priority_label_boundaries_are_inclusive_on_the_low_end():
+    assert priority_label(1.999) == "Low"
+    assert priority_label(2.0) == "Normal"
+    assert priority_label(3.0) == "High"
+    assert priority_label(4.0) == "Urgent"

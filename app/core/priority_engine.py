@@ -75,3 +75,17 @@ def calculate_priority_score(task, today: date) -> float:
         + deadline_pressure * PRIORITY_WEIGHTS["deadline_pressure"]
         + context_adjustment * PRIORITY_WEIGHTS["context_adjustment"]
     )
+
+
+def priority_label(score: float) -> str:
+    """Display-only bucketing of the existing weighted score into a label
+    a UI can show at a glance. Never a substitute for the score itself —
+    purely a presentation-layer derivation (see ARCHITECTURE.md's scoring
+    engine is the single source of truth)."""
+    if score >= 4.0:
+        return "Urgent"
+    if score >= 3.0:
+        return "High"
+    if score >= 2.0:
+        return "Normal"
+    return "Low"

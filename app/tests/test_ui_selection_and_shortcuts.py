@@ -170,7 +170,7 @@ def test_cancel_selected_cancels_and_clears_selection(wiring):
 def test_cancelled_task_disappears_from_the_board(wiring):
     task_id = make_scheduled_task(wiring)
     panel = TodayPanel(wiring["task_service"], wiring["schedule_service"], wiring["category_repo"])
-    assert panel._list_layout.count() == 2  # one card + the trailing stretch
+    assert panel._today_section.body_layout.count() == 1  # one card
 
     wiring["task_service"].cancel_task(task_id)
     panel.refresh()
@@ -178,7 +178,53 @@ def test_cancelled_task_disappears_from_the_board(wiring):
     # The removed card's widget may still linger un-destroyed until the
     # next real event loop iteration (deleteLater() semantics) — what
     # matters is it's out of the layout, i.e. no longer on the board.
-    assert panel._list_layout.count() == 1  # just the trailing stretch
+    assert panel._today_section.body_layout.count() == 0
+
+
+def test_scheduled_task_lands_in_today_section(wiring):
+    task_id = make_scheduled_task(wiring)
+    panel = TodayPanel(wiring["task_service"], wiring["schedule_service"], wiring["category_repo"])
+
+    assert panel._today_section.body_layout.count() == 1
+    assert panel._overdue_section.body_layout.count() == 0
+    assert panel._unscheduled_section.body_layout.count() == 0
+    assert panel._completed_section.body_layout.count() == 0
+
+
+def test_overdue_task_lands_in_overdue_section_not_today(wiring):
+    task_id = wiring["task_repo"].create(Task(
+        id=None, title="Stale", description="", task_type=TaskType.NORMAL,
+        project_id=None, category="Personal", importance=3, urgency=3,
+        seriousness=3, effort=1, available_from=TODAY - timedelta(days=5),
+        due_date=TODAY - timedelta(days=1), status=TaskStatus.PENDING, created_at=TODAY,
+    ))
+    panel = TodayPanel(wiring["task_service"], wiring["schedule_service"], wiring["category_repo"])
+
+    assert panel._overdue_section.body_layout.count() == 1
+    assert panel._today_section.body_layout.count() == 0
+
+
+def test_unscheduled_active_task_lands_in_unscheduled_section(wiring):
+    wiring["task_repo"].create(Task(
+        id=None, title="Someday", description="", task_type=TaskType.NORMAL,
+        project_id=None, category="Personal", importance=2, urgency=2,
+        seriousness=2, effort=1, available_from=TODAY, due_date=None,
+        status=TaskStatus.PENDING, created_at=TODAY,
+    ))
+    panel = TodayPanel(wiring["task_service"], wiring["schedule_service"], wiring["category_repo"])
+
+    assert panel._unscheduled_section.body_layout.count() == 1
+
+
+def test_completed_section_starts_collapsed(wiring):
+    task_id = make_scheduled_task(wiring, status=TaskStatus.COMPLETED, completed_at=TODAY)
+    panel = TodayPanel(wiring["task_service"], wiring["schedule_service"], wiring["category_repo"])
+
+    assert panel._completed_section.body_layout.count() == 1
+    assert panel._completed_section.is_collapsed() is True
+
+    panel._completed_section.set_collapsed(False)
+    assert panel._completed_section.is_collapsed() is False
 
 
 def test_defer_selected_moves_the_task_in_weekly_board(wiring):

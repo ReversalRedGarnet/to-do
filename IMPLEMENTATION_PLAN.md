@@ -330,6 +330,40 @@ DB. Closed out:
 
 ---
 
+## Known limitations — Today/Week/Projects/Settings UX overhaul
+
+Carried over from the v1.1 UX pass (sectioned Today view, drag-and-drop
+week board with per-day load indicators, previewable/undoable Generate
+Week, Projects, reorganized Settings). Out of scope to fix now; recorded
+here so future work doesn't have to rediscover them from scratch:
+
+- **`WeeklyBoard.set_week` doesn't rebuild columns for a different
+  week.** The board is constructed once against `week_start(date.today())`
+  and there is currently no week-navigation UI (no "next/previous week"
+  control), so this was never exercised. It's more likely to be noticed
+  now that the board has drag-and-drop and per-day capacity/load
+  indicators, which make it feel like a real planning surface a user
+  would expect to page through. Fixing it means actually rebuilding
+  `self._columns`/`self._load_labels` (and re-wiring their drop targets)
+  for the new week, not just re-running `refresh()`.
+- **Fixed events still don't appear on the Week board.** `ScheduleService.
+  get_fixed_events_between` exists and `generate_weekly_schedule` already
+  accounts for fixed-event capacity when placing tasks, but `WeeklyBoard.
+  refresh()` only renders `task_schedule` entries — a fixed event on a
+  given day consumes budget in the allocator yet is invisible in the UI,
+  so a day can look like it has more free room than the load indicator's
+  own math assumes. Pre-existing v1 gap, now more visible because the
+  board is a real planning surface.
+- **Undo (Generate Week apply, Delete) is single-level and session-only
+  by design**, not a gap so much as a deliberate, disclosed tradeoff —
+  see the "Undo is available only for the rest of the current session"
+  note now surfaced in the Generate Week preview dialog, the
+  delete-confirmation prompts, and Settings → Data. Noted here too so
+  it isn't mistaken for an oversight if a future contributor tries to
+  reconcile it against the two gaps above.
+
+---
+
 Progress is tracked by checking boxes above as each piece lands and tests
 pass. See `ARCHITECTURE.md` for module boundaries, `ALGORITHM.md` for the
 scoring/scheduling/color rules, `DEVELOPMENT.md` for environment/test/

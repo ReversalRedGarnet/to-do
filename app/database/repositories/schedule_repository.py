@@ -23,10 +23,15 @@ class ScheduleRepository:
         self._conn = conn
 
     def replace_week(self, week_start: date, entries: List[ScheduleEntry]) -> None:
-        """Replace every non-locked schedule row for this week with `entries`.
-        Locked rows (spec §30 "Lock task to day") are left untouched."""
+        """Replace every non-protected schedule row for this week with
+        `entries`. Locked rows (spec §30 "Lock task to day") and
+        manually-overridden rows (drag-and-drop, Defer/Move — spec §29/§30
+        "never silently move a manually placed task") are left untouched;
+        callers building `entries` are responsible for not including a
+        placement for a protected task_id, since ON CONFLICT would
+        otherwise overwrite its date/reason anyway."""
         self._conn.execute(
-            "DELETE FROM task_schedule WHERE week_start = ? AND locked = 0",
+            "DELETE FROM task_schedule WHERE week_start = ? AND locked = 0 AND manual_override = 0",
             (week_start.isoformat(),),
         )
         for entry in entries:
@@ -83,5 +88,32 @@ class ScheduleRepository:
             WHERE task_id = ? AND week_start = ?
             """,
             (new_date.isoformat(), task_id, week_start.isoformat()),
+        )
+        self._conn.commit()
+
+    def upsert_task_day(self, task_id: int, week_start: date, scheduled_date: date,
+                         reason: str, manual_override: bool = True) -> None:
+        """Unlike `move_task` (UPDATE-only, safe only when a row already
+        exists), this inserts a row if the task has never been scheduled
+        this week — needed for drag-and-drop from an "Unscheduled" area
+        onto a day (Phase 4) and for Generate Week's apply step (Phase 3)."""
+        self._conn.execute(
+            """
+            INSERT INTO task_schedule
+                (task_id, week_start, scheduled_date, schedule_reason, manual_override, locked)
+            VALUES (?, ?, ?, ?, ?, 0)
+            ON CONFLICT(task_id, week_start) DO UPDATE SET
+                scheduled_date = excluded.scheduled_date,
+                schedule_reason = excluded.schedule_reason,
+                manual_override = excluded.manual_override
+            """,
+            (task_id, week_start.isoformat(), scheduled_date.isoformat(), reason, int(manual_override)),
+        )
+        self._conn.commit()
+
+    def delete_task_from_week(self, task_id: int, week_start: date) -> None:
+        self._conn.execute(
+            "DELETE FROM task_schedule WHERE task_id = ? AND week_start = ?",
+            (task_id, week_start.isoformat()),
         )
         self._conn.commit()

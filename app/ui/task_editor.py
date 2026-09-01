@@ -27,8 +27,36 @@ def _from_qdate(qd: QDate):
     return qd.toPython() if qd.isValid() else None
 
 
+class MoveToProjectDialog(QDialog):
+    """Phase 7 right-click "Move to Project" — a small standalone picker,
+    distinct from TaskEditorDialog's inline Project combo (used when only
+    the project assignment needs to change, not a full edit)."""
+
+    def __init__(self, task, project_repository, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Move to Project")
+        form = QFormLayout(self)
+
+        self._project = QComboBox()
+        self._project.addItem("(None)", None)
+        for project in project_repository.list_active():
+            self._project.addItem(project.name, project.id)
+        index = self._project.findData(task.project_id)
+        self._project.setCurrentIndex(max(index, 0))
+        form.addRow("Project", self._project)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        form.addRow(buttons)
+
+    def selected_project_id(self):
+        return self._project.currentData()
+
+
 class TaskEditorDialog(QDialog):
-    def __init__(self, task, categories, task_service, recurrence_service=None, parent=None):
+    def __init__(self, task, categories, task_service, recurrence_service=None,
+                 project_repository=None, parent=None):
         super().__init__(parent)
         self._task = task
         self._task_service = task_service
@@ -70,6 +98,23 @@ class TaskEditorDialog(QDialog):
         self._due_date = QDateEdit(_to_qdate(task.due_date) or QDate.currentDate())
         self._due_date.setCalendarPopup(True)
         form.addRow("Due date", self._paired(self._due_date, self._due_date_enabled))
+
+        if project_repository is not None:
+            self._project_ids = [None]
+            self._project = QComboBox()
+            self._project.addItem("(None)", None)
+            for project in project_repository.list_active():
+                self._project.addItem(project.name, project.id)
+                self._project_ids.append(project.id)
+            if task.project_id is not None and task.project_id not in self._project_ids:
+                current = project_repository.get_by_id(task.project_id)
+                if current is not None:
+                    self._project.addItem(current.name, current.id)
+            index = self._project.findData(task.project_id)
+            self._project.setCurrentIndex(max(index, 0))
+            form.addRow("Project", self._project)
+        else:
+            self._project = None
 
         if recurrence_service is not None:
             existing_rule = recurrence_service.get_rule_for_task(task)
@@ -122,8 +167,7 @@ class TaskEditorDialog(QDialog):
         return container
 
     def _save(self) -> None:
-        self._task_service.update_task(
-            self._task.id,
+        fields = dict(
             title=self._title.text().strip() or self._task.title,
             description=self._description.toPlainText(),
             category=self._category.currentText(),
@@ -134,6 +178,9 @@ class TaskEditorDialog(QDialog):
             available_from=_from_qdate(self._available_from.date()) if self._available_from_enabled.isChecked() else None,
             due_date=_from_qdate(self._due_date.date()) if self._due_date_enabled.isChecked() else None,
         )
+        if self._project is not None:
+            fields["project_id"] = self._project.currentData()
+        self._task_service.update_task(self._task.id, **fields)
 
         if self._recurrence_service is not None:
             frequency = self._frequency.currentData()

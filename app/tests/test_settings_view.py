@@ -3,6 +3,7 @@ directly and drives its controls, same technique as
 test_task_editor_recurrence.py."""
 
 import pytest
+from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import QApplication
 
 from app.database.db import get_connection, initialize_database
@@ -66,3 +67,66 @@ def test_refresh_reflects_changes_made_elsewhere(settings_service):
     view.refresh()
 
     assert view._notifications_enabled.isChecked() is False
+
+
+# --- Phase 6: reorganized sections ---
+
+def test_view_prefills_week_generation_and_appearance_defaults(settings_service):
+    view = SettingsView(settings_service)
+    assert view._aggressiveness.currentData() == "standard"
+    assert view._weekend_allowed.isChecked() is True
+    assert view._allow_low_priority_automove.isChecked() is True
+    assert view._theme.currentData() == "system"
+
+
+def test_saving_week_generation_controls_persists(settings_service):
+    view = SettingsView(settings_service)
+    view._aggressiveness.setCurrentIndex(view._aggressiveness.findData("relaxed"))
+    view._weekend_allowed.setChecked(False)
+    view._allow_low_priority_automove.setChecked(False)
+
+    view._save()
+
+    settings = settings_service.get()
+    assert settings.week_gen_aggressiveness == "relaxed"
+    assert settings.week_gen_weekend_allowed is False
+    assert settings.week_gen_allow_low_priority_automove is False
+
+
+def test_saving_theme_preference_persists_and_applies_live(settings_service, qapp):
+    from app.ui.theme import apply_theme
+
+    view = SettingsView(settings_service, app=qapp)
+    view._theme.setCurrentIndex(view._theme.findData("dark"))
+
+    view._save()
+
+    try:
+        assert settings_service.get().theme_preference == "dark"
+        assert qapp.palette().color(QPalette.ColorRole.Window).lightness() < 128
+    finally:
+        # qapp is the one process-wide QApplication shared by the whole
+        # test session — reset it so this test doesn't leak a dark
+        # palette into whatever runs next.
+        apply_theme(qapp, "system")
+
+
+def test_data_section_shows_the_database_path(settings_service):
+    from app.database.db import default_db_path
+
+    view = SettingsView(settings_service)
+    assert str(default_db_path()) in _data_group_text(view)
+
+
+def test_data_section_discloses_undo_is_session_only(settings_service):
+    """Hardening pass item 2: undo (Generate Week apply, Delete) stays
+    single-level and session-only by design — this must be surfaced to
+    the user rather than left as a silent surprise."""
+    view = SettingsView(settings_service)
+    assert "session" in _data_group_text(view).lower()
+
+
+def _data_group_text(view) -> str:
+    from PySide6.QtWidgets import QLabel
+    texts = [w.text() for w in view.findChildren(QLabel)]
+    return " ".join(texts)

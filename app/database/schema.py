@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS projects (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     name        TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
-    active      INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1))
+    active      INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+    due_date    TEXT    -- ISO date, nullable; see db.py's _MIGRATIONS for existing DBs
 );
 
 CREATE TABLE IF NOT EXISTS recurrence_rules (
@@ -117,7 +118,17 @@ CREATE TABLE IF NOT EXISTS settings (
     priority_weights         TEXT NOT NULL,  -- JSON object
     notifications_enabled    INTEGER NOT NULL DEFAULT 1 CHECK (notifications_enabled IN (0, 1)),
     sunday_reminder_enabled  INTEGER NOT NULL DEFAULT 1 CHECK (sunday_reminder_enabled IN (0, 1)),
-    week_starts_monday       INTEGER NOT NULL DEFAULT 1 CHECK (week_starts_monday IN (0, 1))
+    week_starts_monday       INTEGER NOT NULL DEFAULT 1 CHECK (week_starts_monday IN (0, 1)),
+    -- Week generation knobs (Phase 6) — additive, never touch the
+    -- LOW/MEDIUM/HIGH capacity constants themselves. See db.py's
+    -- _MIGRATIONS for existing DBs from before this column set existed.
+    week_gen_aggressiveness  TEXT    NOT NULL DEFAULT 'standard'
+             CHECK (week_gen_aggressiveness IN ('relaxed', 'standard', 'aggressive')),
+    week_gen_weekend_allowed INTEGER NOT NULL DEFAULT 1 CHECK (week_gen_weekend_allowed IN (0, 1)),
+    week_gen_allow_low_priority_automove INTEGER NOT NULL DEFAULT 1
+             CHECK (week_gen_allow_low_priority_automove IN (0, 1)),
+    theme_preference         TEXT    NOT NULL DEFAULT 'system'
+             CHECK (theme_preference IN ('system', 'light', 'dark'))
 );
 
 CREATE TABLE IF NOT EXISTS app_state (

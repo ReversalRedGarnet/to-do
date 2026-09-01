@@ -6,6 +6,12 @@ from typing import List, Optional
 from app.models.task import Task, TaskStatus, TaskType
 
 
+def _escape_like(text: str) -> str:
+    """Escapes SQLite LIKE wildcards so a literal search for e.g. "50%"
+    doesn't get treated as a pattern."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def _row_to_task(row) -> Task:
     return Task(
         id=row["id"],
@@ -95,6 +101,15 @@ class TaskRepository:
         placeholders = ",".join("?" for _ in task_ids)
         rows = self._conn.execute(
             f"SELECT * FROM tasks WHERE id IN ({placeholders})", task_ids
+        ).fetchall()
+        return [_row_to_task(r) for r in rows]
+
+    def search_by_title(self, query: str) -> List[Task]:
+        """Case-insensitive substring search over title (Phase 7 Ctrl+F).
+        Excludes cancelled tasks, same as `list_all`'s default."""
+        rows = self._conn.execute(
+            "SELECT * FROM tasks WHERE status != 'cancelled' AND title LIKE ? ESCAPE '\\' ORDER BY title",
+            (f"%{_escape_like(query)}%",),
         ).fetchall()
         return [_row_to_task(r) for r in rows]
 

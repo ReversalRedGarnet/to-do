@@ -18,6 +18,10 @@ class SettingsRepository:
             notifications_enabled=bool(row["notifications_enabled"]),
             sunday_reminder_enabled=bool(row["sunday_reminder_enabled"]),
             week_starts_monday=bool(row["week_starts_monday"]),
+            week_gen_aggressiveness=row["week_gen_aggressiveness"],
+            week_gen_weekend_allowed=bool(row["week_gen_weekend_allowed"]),
+            week_gen_allow_low_priority_automove=bool(row["week_gen_allow_low_priority_automove"]),
+            theme_preference=row["theme_preference"],
         )
 
     def update(self, settings: AppSettings) -> None:
@@ -26,14 +30,18 @@ class SettingsRepository:
             UPDATE settings SET
                 daily_capacities = ?, utilization_target = ?, priority_weights = ?,
                 notifications_enabled = ?, sunday_reminder_enabled = ?,
-                week_starts_monday = ?
+                week_starts_monday = ?, week_gen_aggressiveness = ?,
+                week_gen_weekend_allowed = ?, week_gen_allow_low_priority_automove = ?,
+                theme_preference = ?
             WHERE id = 1
             """,
             (
                 json.dumps(settings.daily_capacities), settings.utilization_target,
                 json.dumps(settings.priority_weights),
                 int(settings.notifications_enabled), int(settings.sunday_reminder_enabled),
-                int(settings.week_starts_monday),
+                int(settings.week_starts_monday), settings.week_gen_aggressiveness,
+                int(settings.week_gen_weekend_allowed), int(settings.week_gen_allow_low_priority_automove),
+                settings.theme_preference,
             ),
         )
         self._conn.commit()

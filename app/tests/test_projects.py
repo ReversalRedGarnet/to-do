@@ -11,6 +11,7 @@ from app.database.repositories.task_repository import TaskRepository
 from app.models.project import Project
 from app.models.task import Task, TaskStatus, TaskType
 from app.notifications.notification_service import NullNotificationService
+from app.services.project_service import ProjectService
 from app.services.task_service import TaskService
 
 TODAY = date(2026, 6, 15)
@@ -98,3 +99,72 @@ def test_next_actionable_item_skips_completed_children(conn, task_service):
 
     result = task_service.next_actionable_item(project_id)
     assert result.id == next_up
+
+
+# --- Phase 5: due date, open count, grouping, archive ---
+
+def test_project_due_date_round_trips_through_the_repository(conn):
+    project_repo = ProjectRepository(conn)
+    project_id = project_repo.create(Project(id=None, name="Launch", description="", due_date=date(2026, 7, 1)))
+
+    fetched = project_repo.get_by_id(project_id)
+
+    assert fetched.due_date == date(2026, 7, 1)
+
+
+def test_project_service_create_and_archive(conn):
+    service = ProjectService(ProjectRepository(conn))
+    project = service.create("Launch", "Ship it", date(2026, 7, 1))
+
+    assert project.id is not None
+    assert project in service.list_active()
+
+    service.archive(project.id)
+
+    assert project.id not in {p.id for p in service.list_active()}
+    assert project.id in {p.id for p in service.list_archived()}
+
+
+def test_count_open_tasks_excludes_completed_and_cancelled(conn, task_service):
+    project_repo = ProjectRepository(conn)
+    project_id = project_repo.create(Project(id=None, name="Build Todo App", description=""))
+    task_repo = TaskRepository(conn)
+    open_a = task_repo.create(make_child(project_id))
+    open_b = task_repo.create(make_child(project_id, status=TaskStatus.SCHEDULED))
+    done = task_repo.create(make_child(project_id))
+    task_service.complete_task(done, completed_on=TODAY)
+
+    assert task_service.count_open_tasks(project_id) == 2
+
+
+def test_tasks_grouped_by_status(conn, task_service):
+    project_repo = ProjectRepository(conn)
+    project_id = project_repo.create(Project(id=None, name="Build Todo App", description=""))
+    task_repo = TaskRepository(conn)
+    pending_id = task_repo.create(make_child(project_id, status=TaskStatus.PENDING))
+    done_id = task_repo.create(make_child(project_id))
+    task_service.complete_task(done_id, completed_on=TODAY)
+
+    groups = task_service.tasks_grouped_by_status(project_id)
+
+    assert [t.id for t in groups[TaskStatus.PENDING]] == [pending_id]
+    assert [t.id for t in groups[TaskStatus.COMPLETED]] == [done_id]
+
+
+def test_assigning_a_project_flips_a_normal_task_to_project_child(conn, task_service):
+    project_repo = ProjectRepository(conn)
+    project_id = project_repo.create(Project(id=None, name="Build Todo App", description=""))
+    task_repo = TaskRepository(conn)
+    task_id = task_repo.create(Task(
+        id=None, title="Loose task", description="", task_type=TaskType.NORMAL,
+        project_id=None, category="Personal", importance=3, urgency=3, seriousness=3,
+        effort=1, available_from=TODAY, due_date=None, status=TaskStatus.PENDING, created_at=TODAY,
+    ))
+
+    task_service.update_task(task_id, project_id=project_id)
+    linked = task_repo.get_by_id(task_id)
+    assert linked.task_type == TaskType.PROJECT_CHILD
+
+    task_service.update_task(task_id, project_id=None)
+    unlinked = task_repo.get_by_id(task_id)
+    assert unlinked.task_type == TaskType.NORMAL

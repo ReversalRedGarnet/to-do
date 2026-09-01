@@ -39,7 +39,7 @@ from app.services.schedule_service import ScheduleService
 from app.services.settings_service import SettingsService
 from app.services.task_service import TaskService
 from app.ui.main_window import build_main_window
-from app.ui.theme import apply_system_theme
+from app.ui.theme import apply_theme
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +144,7 @@ def main() -> int:
     )
 
     app = QApplication(sys.argv)
-    apply_system_theme(app)
+    apply_theme(app, settings_repo.get().theme_preference)
     window = build_main_window(
         task_service, schedule_service, project_repo, category_repo,
         recurrence_service=recurrence_service,

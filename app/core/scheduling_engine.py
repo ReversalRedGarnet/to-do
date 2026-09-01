@@ -17,7 +17,7 @@ no direct DB or datetime.now() calls inside the core allocation logic.
 
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from app.config.settings import EFFORT_UNITS, UTILIZATION_TARGET
 from app.core.priority_engine import calculate_deadline_pressure, calculate_priority_score
@@ -72,12 +72,27 @@ def _reason_for(task, today: date) -> str:
     return HIGH_PRIORITY
 
 
-def generate_weekly_schedule(tasks, fixed_events, week_start_date, capacities):
-    """Returns a dict of date -> list of Placement for every day of the week."""
+def generate_weekly_schedule(
+    tasks, fixed_events, week_start_date, capacities, *,
+    locked_placements: Optional[List[Tuple[object, date]]] = None,
+    utilization_target: float = UTILIZATION_TARGET,
+    weekend_allowed: bool = True,
+):
+    """Returns a dict of date -> list of Placement for every day of the week.
+
+    `locked_placements` (task, date) pairs — from existing `locked=1` or
+    `manual_override=1` task_schedule rows — are placed exactly like fixed
+    events: they consume capacity on their given date but are never
+    reassigned. Callers (ScheduleService) are responsible for excluding
+    these tasks from `tasks` so they aren't scored/placed twice.
+    `weekend_allowed=False` removes Saturday/Sunday from the days the
+    greedy allocator may place *new* (non-locked, non-fixed) work on —
+    locked placements and fixed events on a weekend day are unaffected,
+    since neither is ever moved by this function."""
     week_dates = _week_dates(week_start_date)
     capacity_units = _capacity_units(capacities)
     target_budget = {
-        d: capacity_units[i] * UTILIZATION_TARGET for i, d in enumerate(week_dates)
+        d: capacity_units[i] * utilization_target for i, d in enumerate(week_dates)
     }
 
     schedule = {d: [] for d in week_dates}
@@ -95,8 +110,24 @@ def generate_weekly_schedule(tasks, fixed_events, week_start_date, capacities):
         )
         target_budget[event.event_date] -= event.capacity_cost
 
+    for locked_task, locked_date in (locked_placements or []):
+        if locked_date not in schedule:
+            continue
+        cost = EFFORT_UNITS[locked_task.effort]
+        schedule[locked_date].append(
+            Placement(
+                date=locked_date,
+                reason=USER_SELECTED,
+                capacity_used=cost,
+                task_id=locked_task.id,
+            )
+        )
+        target_budget[locked_date] -= cost
+
+    placeable_dates = week_dates if weekend_allowed else week_dates[:5]
+
     eligible = [
-        (task, _eligible_days(task, week_dates))
+        (task, _eligible_days(task, placeable_dates))
         for task in tasks
     ]
     eligible = [(task, days) for task, days in eligible if days]
@@ -128,6 +159,49 @@ def generate_weekly_schedule(tasks, fixed_events, week_start_date, capacities):
         )
 
     return schedule
+
+
+@dataclass
+class PlanChange:
+    task_id: int
+    from_date: Optional[date]
+    to_date: Optional[date]
+    reason: str
+    protected: bool = False
+
+
+def diff_week_plan(old_entries, new_schedule) -> List[PlanChange]:
+    """Pure comparison of a week's persisted `ScheduleEntry` rows against a
+    freshly computed `generate_weekly_schedule` result — used by the
+    Generate Week preview UI to show what would actually move. A task
+    whose date is unchanged produces no change entry."""
+    old_date_by_task = {e.task_id: e.scheduled_date for e in old_entries}
+    old_protected_by_task = {e.task_id: bool(e.locked or e.manual_override) for e in old_entries}
+
+    new_placements = [
+        p for placements in new_schedule.values() for p in placements if p.task_id is not None
+    ]
+    new_date_by_task = {p.task_id: p.date for p in new_placements}
+    reason_by_task = {p.task_id: p.reason for p in new_placements}
+
+    changes: List[PlanChange] = []
+    for task_id in set(old_date_by_task) | set(new_date_by_task):
+        old_date = old_date_by_task.get(task_id)
+        new_date = new_date_by_task.get(task_id)
+        if old_date == new_date:
+            continue
+        changes.append(
+            PlanChange(
+                task_id=task_id,
+                from_date=old_date,
+                to_date=new_date,
+                reason=reason_by_task.get(task_id, ""),
+                protected=old_protected_by_task.get(task_id, False),
+            )
+        )
+
+    changes.sort(key=lambda c: (c.to_date or date.max, c.task_id))
+    return changes
 
 
 def rebalance_after_missed_task(missed_task, remaining_week_state):

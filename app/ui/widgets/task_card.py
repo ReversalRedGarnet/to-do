@@ -1,9 +1,15 @@
 """Reusable task card widget — no business logic, only display + signal
 emission. Callers (weekly_board, main_window) wire signals to services."""
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
+from datetime import date
 
+from PySide6.QtCore import QMimeData, Qt, Signal
+from PySide6.QtGui import QDrag
+from PySide6.QtWidgets import (
+    QApplication, QCheckBox, QFrame, QHBoxLayout, QLabel, QMenu, QPushButton, QVBoxLayout,
+)
+
+from app.core.priority_engine import calculate_priority_score, priority_label
 from app.core.state_engine import Color
 from app.models.task import TaskStatus
 
@@ -21,22 +27,36 @@ _COLOR_HEX = {
 
 _SELECTION_OUTLINE = "#3c6ec8"
 
+_STATUS_LABELS = {
+    TaskStatus.PENDING: "Unscheduled",
+    TaskStatus.SCHEDULED: "Scheduled",
+    TaskStatus.COMPLETED: "Completed",
+    TaskStatus.DEFERRED: "Deferred",
+    TaskStatus.CANCELLED: "Cancelled",
+}
+
 
 class TaskCard(QFrame):
     complete_clicked = Signal(int)
     defer_clicked = Signal(int)
     edit_clicked = Signal(int)
     card_clicked = Signal(int)  # selection — distinct from the action buttons above
+    delete_requested = Signal(int)
+    duplicate_requested = Signal(int)
+    move_to_project_requested = Signal(int)
 
-    def __init__(self, task, color, parent=None):
+    def __init__(self, task, color, parent=None, *, project_lookup=None, today=None, show_defer=True):
         super().__init__(parent)
         self.task_id = task.id
         self.task_status = task.status
+        self._is_fixed_event = task.task_type.value == "fixed_event"
         self._hex_color = _COLOR_HEX.get(color, _COLOR_HEX[None])
         self._selected = False
-        self._build(task)
+        self._draggable = not self._is_fixed_event and task.status in _ACTIONABLE_STATUSES
+        self._press_pos = None
+        self._build(task, project_lookup or {}, today, show_defer)
 
-    def _build(self, task):
+    def _build(self, task, project_lookup, today, show_defer) -> None:
         self.setObjectName("taskCard")
         self._apply_style()
 
@@ -49,21 +69,33 @@ class TaskCard(QFrame):
         outer.addWidget(title)
 
         meta_bits = [task.category]
+        score = calculate_priority_score(task, today or date.today())
+        meta_bits.append(priority_label(score))
+        meta_bits.append(f"Effort {task.effort}")
+        meta_bits.append(_STATUS_LABELS.get(task.status, task.status.value))
         if task.due_date:
             meta_bits.append(f"due {task.due_date.isoformat()}")
+        project_name = project_lookup.get(task.project_id) if task.project_id else None
+        if project_name:
+            meta_bits.append(project_name)
         meta_label = QLabel(" · ".join(meta_bits))
         meta_label.setWordWrap(True)
+        meta_label.setStyleSheet("color: palette(mid);")
         outer.addWidget(meta_label)
 
         button_row = QHBoxLayout()
         if task.task_type.value != "fixed_event" and task.status in _ACTIONABLE_STATUSES:
-            complete_btn = QPushButton("Complete")
-            complete_btn.clicked.connect(lambda: self.complete_clicked.emit(task.id))
-            button_row.addWidget(complete_btn)
+            complete_box = QCheckBox("Done")
+            complete_box.setChecked(False)
+            complete_box.stateChanged.connect(
+                lambda state: self.complete_clicked.emit(task.id) if state else None
+            )
+            button_row.addWidget(complete_box)
 
-            defer_btn = QPushButton("Defer")
-            defer_btn.clicked.connect(lambda: self.defer_clicked.emit(task.id))
-            button_row.addWidget(defer_btn)
+            if show_defer:
+                defer_btn = QPushButton("Defer")
+                defer_btn.clicked.connect(lambda: self.defer_clicked.emit(task.id))
+                button_row.addWidget(defer_btn)
 
         edit_btn = QPushButton("Edit")
         edit_btn.clicked.connect(lambda: self.edit_clicked.emit(task.id))
@@ -88,4 +120,49 @@ class TaskCard(QFrame):
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             self.card_clicked.emit(self.task_id)
+            self._press_pos = event.position().toPoint()
         super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        if (
+            self._draggable
+            and self._press_pos is not None
+            and event.buttons() & Qt.MouseButton.LeftButton
+            and (event.position().toPoint() - self._press_pos).manhattanLength()
+            >= QApplication.startDragDistance()
+        ):
+            self._press_pos = None
+            drag = QDrag(self)
+            mime = QMimeData()
+            mime.setText(str(self.task_id))
+            drag.setMimeData(mime)
+            drag.exec(Qt.DropAction.MoveAction)
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        self._press_pos = None
+        super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.edit_clicked.emit(self.task_id)
+        super().mouseDoubleClickEvent(event)
+
+    def contextMenuEvent(self, event) -> None:
+        """Right-click menu (spec: Complete/Reschedule/Edit/Move to
+        Project/Delete/Duplicate). Reschedule reuses the same
+        defer_clicked signal the Defer button already emits — same
+        dialog, just a second way to trigger it."""
+        menu = QMenu(self)
+        actionable = not self._is_fixed_event and self.task_status in _ACTIONABLE_STATUSES
+
+        if actionable:
+            menu.addAction("Complete", lambda: self.complete_clicked.emit(self.task_id))
+            menu.addAction("Reschedule", lambda: self.defer_clicked.emit(self.task_id))
+        menu.addAction("Edit", lambda: self.edit_clicked.emit(self.task_id))
+        menu.addAction("Move to Project", lambda: self.move_to_project_requested.emit(self.task_id))
+        menu.addAction("Duplicate", lambda: self.duplicate_requested.emit(self.task_id))
+        menu.addSeparator()
+        menu.addAction("Delete", lambda: self.delete_requested.emit(self.task_id))
+        menu.exec(event.globalPos())

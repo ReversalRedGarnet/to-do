@@ -168,3 +168,60 @@ def test_assigning_a_project_flips_a_normal_task_to_project_child(conn, task_ser
     task_service.update_task(task_id, project_id=None)
     unlinked = task_repo.get_by_id(task_id)
     assert unlinked.task_type == TaskType.NORMAL
+
+
+# --- Audit item: archiving a project excludes its children from week
+#     planning/Today without deleting or force-completing them ---
+
+def test_archiving_a_project_excludes_its_children_from_week_eligibility(conn, task_service):
+    project_repo = ProjectRepository(conn)
+    project_service = ProjectService(project_repo)
+    project_id = project_repo.create(Project(id=None, name="Build Todo App", description=""))
+    task_repo = TaskRepository(conn)
+    child_id = task_repo.create(make_child(project_id))
+
+    week_start, week_end = date(2026, 6, 15), date(2026, 6, 21)
+    assert child_id in {t.id for t in task_repo.list_eligible_for_week(week_start, week_end)}
+
+    project_service.archive(project_id)
+
+    assert child_id not in {t.id for t in task_repo.list_eligible_for_week(week_start, week_end)}
+    # Neither deleted nor force-completed — still there, still PENDING.
+    still_there = task_repo.get_by_id(child_id)
+    assert still_there is not None
+    assert still_there.status == TaskStatus.PENDING
+
+
+def test_unarchiving_a_project_restores_its_childrens_week_eligibility(conn, task_service):
+    project_repo = ProjectRepository(conn)
+    project_service = ProjectService(project_repo)
+    project_id = project_repo.create(Project(id=None, name="Build Todo App", description=""))
+    task_repo = TaskRepository(conn)
+    child_id = task_repo.create(make_child(project_id))
+    project_service.archive(project_id)
+
+    week_start, week_end = date(2026, 6, 15), date(2026, 6, 21)
+    assert child_id not in {t.id for t in task_repo.list_eligible_for_week(week_start, week_end)}
+
+    project_service.update(project_id, active=True)
+
+    assert child_id in {t.id for t in task_repo.list_eligible_for_week(week_start, week_end)}
+
+
+def test_archiving_a_project_excludes_its_children_from_today_view_task_list(conn, task_service):
+    """TodayPanel/WeeklyBoard read via TaskService.list_all(exclude_
+    archived_project_children=True) — the flag is opt-in so every other
+    caller (search, project detail view, etc.) is unaffected."""
+    project_repo = ProjectRepository(conn)
+    project_service = ProjectService(project_repo)
+    project_id = project_repo.create(Project(id=None, name="Build Todo App", description=""))
+    task_repo = TaskRepository(conn)
+    child_id = task_repo.create(make_child(project_id))
+
+    assert child_id in {t.id for t in task_service.list_all(exclude_archived_project_children=True)}
+
+    project_service.archive(project_id)
+
+    assert child_id not in {t.id for t in task_service.list_all(exclude_archived_project_children=True)}
+    # Unaffected callers still see it — e.g. the project's own detail view.
+    assert child_id in {t.id for t in task_service.list_all()}

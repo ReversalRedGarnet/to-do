@@ -189,6 +189,56 @@ def test_custom_utilization_target_is_honored():
     assert all(p.overcommitted for p in placements)
 
 
+# - audit fix #3: elapsed days of the current week are never eligible for new work
+def test_today_excludes_already_elapsed_days_from_new_placements():
+    thursday = DAYS[3]
+    tasks = [make_task(id=i, available_from=None, due_date=None) for i in range(1, 4)]
+
+    schedule = generate_weekly_schedule(tasks, [], MONDAY, DEFAULT_WEEKLY_CAPACITY, today=thursday)
+
+    placements = flatten(schedule)
+    assert len(placements) == 3
+    assert all(p.date >= thursday for p in placements)
+    assert not any(p.date in (MONDAY, DAYS[1], DAYS[2]) for p in placements)  # Mon/Tue/Wed
+
+
+def test_today_leaves_locked_placements_and_fixed_events_on_elapsed_days_untouched():
+    """Locked/manual_override rows and fixed events are never reassigned
+    by this function regardless — only *new* work is affected by the
+    elapsed-day filter."""
+    locked_task = make_task(id=1, effort=1)
+    fixed = FixedEvent(id=1, title="Standup", description="", event_date=MONDAY, capacity_cost=1)
+    thursday = DAYS[3]
+
+    schedule = generate_weekly_schedule(
+        [], [fixed], MONDAY, DEFAULT_WEEKLY_CAPACITY,
+        locked_placements=[(locked_task, MONDAY)], today=thursday,
+    )
+
+    monday_placements = schedule[MONDAY]
+    assert any(p.task_id == 1 for p in monday_placements)
+    assert any(p.fixed_event_id == 1 for p in monday_placements)
+
+
+def test_today_in_a_future_week_excludes_nothing():
+    task = make_task(id=1, available_from=None, due_date=None)
+    far_future_today = MONDAY - timedelta(days=30)  # this MONDAY hasn't happened yet
+
+    schedule = generate_weekly_schedule([task], [], MONDAY, DEFAULT_WEEKLY_CAPACITY, today=far_future_today)
+
+    placement = next(p for p in flatten(schedule) if p.task_id == 1)
+    assert placement.date == MONDAY
+
+
+def test_today_defaults_to_none_and_preserves_prior_behavior():
+    """Existing 4-positional-arg callers (no `today`) must see no
+    change — a task due earlier in the week is still placeable there."""
+    task = make_task(id=1, available_from=None, due_date=DAYS[1])
+    schedule = generate_weekly_schedule([task], [], MONDAY, DEFAULT_WEEKLY_CAPACITY)
+    placement = next(p for p in flatten(schedule) if p.task_id == 1)
+    assert placement.date in (MONDAY, DAYS[1])
+
+
 # - Phase 3: diff_week_plan pure comparison
 def test_diff_week_plan_reports_only_actual_moves():
     old_entries = [

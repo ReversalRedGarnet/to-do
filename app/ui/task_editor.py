@@ -1,11 +1,13 @@
 """Full task edit dialog (spec §28). Calls into app.services.* only."""
 
-from PySide6.QtCore import QDate
+from PySide6.QtCore import QDate, QTimer
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDateEdit, QDialog, QDialogButtonBox, QFormLayout,
     QHBoxLayout, QLineEdit, QSpinBox, QTextEdit, QWidget,
 )
 
+from app.core import date_service
+from app.core.title_parser import parse_title_hints
 from app.models.recurrence import RecurrenceFrequency
 
 _WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -17,6 +19,11 @@ _FREQUENCY_LABELS = {
     RecurrenceFrequency.MONTHLY: "Monthly",
     RecurrenceFrequency.CUSTOM_WEEKDAYS: "Custom weekdays",
 }
+
+# Live title auto-fill (see core/title_parser.py): debounce interval and
+# the subtle marker distinguishing an inferred value from a typed one.
+_TITLE_PARSE_DEBOUNCE_MS = 400
+_AUTO_FILL_STYLE = "background-color: #eef3ff; border: 1px solid #a8c0f0;"
 
 
 def _to_qdate(d):
@@ -100,6 +107,7 @@ class TaskEditorDialog(QDialog):
         self._due_date.setCalendarPopup(True)
         form.addRow("Due date", self._paired(self._due_date, self._due_date_enabled))
 
+        self._project_choices = []
         if project_repository is not None:
             self._project_ids = [None]
             self._project = QComboBox()
@@ -107,10 +115,12 @@ class TaskEditorDialog(QDialog):
             for project in project_repository.list_active():
                 self._project.addItem(project.name, project.id)
                 self._project_ids.append(project.id)
+                self._project_choices.append((project.id, project.name))
             if task.project_id is not None and task.project_id not in self._project_ids:
                 current = project_repository.get_by_id(task.project_id)
                 if current is not None:
                     self._project.addItem(current.name, current.id)
+                    self._project_choices.append((current.id, current.name))
             index = self._project.findData(task.project_id)
             self._project.setCurrentIndex(max(index, 0))
             form.addRow("Project", self._project)
@@ -146,6 +156,8 @@ class TaskEditorDialog(QDialog):
         else:
             self._frequency = None
 
+        self._init_title_auto_fill()
+
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self._save)
         buttons.rejected.connect(self.reject)
@@ -169,6 +181,85 @@ class TaskEditorDialog(QDialog):
         layout.addWidget(date_edit, stretch=1)
         layout.addWidget(checkbox)
         return container
+
+    # --- Live title auto-fill (see core/title_parser.py) ---
+
+    def _init_title_auto_fill(self) -> None:
+        self._applying_title_hints = False
+        self._manually_edited = {
+            "due_date": False, "effort": False, "urgency": False,
+            "importance": False, "project": False,
+        }
+        self._auto_filled = {
+            "due_date": False, "effort": False, "urgency": False,
+            "importance": False, "project": False,
+        }
+
+        # Any change to these widgets while we are NOT the ones applying
+        # a hint (see `_applying_title_hints`) is a manual edit — from
+        # then on, further title changes must never overwrite that field
+        # again for the rest of this dialog's life.
+        self._due_date.dateChanged.connect(lambda _d: self._on_manual_field_edit("due_date", self._due_date))
+        self._due_date_enabled.toggled.connect(lambda _c: self._on_manual_field_edit("due_date", self._due_date))
+        self._effort.valueChanged.connect(lambda _v: self._on_manual_field_edit("effort", self._effort))
+        self._urgency.valueChanged.connect(lambda _v: self._on_manual_field_edit("urgency", self._urgency))
+        self._importance.valueChanged.connect(lambda _v: self._on_manual_field_edit("importance", self._importance))
+        if self._project is not None:
+            self._project.currentIndexChanged.connect(
+                lambda _i: self._on_manual_field_edit("project", self._project)
+            )
+
+        self._title_debounce = QTimer(self)
+        self._title_debounce.setSingleShot(True)
+        self._title_debounce.setInterval(_TITLE_PARSE_DEBOUNCE_MS)
+        self._title_debounce.timeout.connect(self._apply_title_hints)
+        self._title.textChanged.connect(lambda _text: self._title_debounce.start())
+
+    def _on_manual_field_edit(self, field: str, widget) -> None:
+        if self._applying_title_hints:
+            return
+        self._manually_edited[field] = True
+        self._set_auto_marker(field, widget, False)
+
+    def _set_auto_marker(self, field: str, widget, applied: bool) -> None:
+        self._auto_filled[field] = applied
+        widget.setStyleSheet(_AUTO_FILL_STYLE if applied else "")
+
+    def _apply_title_hints(self) -> None:
+        """Fires ~400ms after the user pauses typing the title (the
+        debounce timer set up in `_init_title_auto_fill`). Infers
+        deadline/effort/urgency/importance/project from the title text
+        alone and fills in whichever of those fields hasn't been
+        manually edited yet this session — never the title itself."""
+        hints = parse_title_hints(self._title.text(), date_service.today(), self._project_choices)
+
+        self._applying_title_hints = True
+        try:
+            if hints.deadline is not None and not self._manually_edited["due_date"]:
+                self._due_date_enabled.setChecked(True)
+                self._due_date.setDate(_to_qdate(hints.deadline))
+                self._set_auto_marker("due_date", self._due_date, True)
+
+            if hints.effort is not None and not self._manually_edited["effort"]:
+                self._effort.setValue(hints.effort)
+                self._set_auto_marker("effort", self._effort, True)
+
+            if hints.urgency is not None and not self._manually_edited["urgency"]:
+                self._urgency.setValue(hints.urgency)
+                self._set_auto_marker("urgency", self._urgency, True)
+
+            if hints.importance is not None and not self._manually_edited["importance"]:
+                self._importance.setValue(hints.importance)
+                self._set_auto_marker("importance", self._importance, True)
+
+            if (hints.project_id is not None and self._project is not None
+                    and not self._manually_edited["project"]):
+                index = self._project.findData(hints.project_id)
+                if index >= 0:
+                    self._project.setCurrentIndex(index)
+                    self._set_auto_marker("project", self._project, True)
+        finally:
+            self._applying_title_hints = False
 
     def _save(self) -> None:
         fields = dict(

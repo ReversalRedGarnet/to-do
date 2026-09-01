@@ -23,6 +23,16 @@ MONDAY = date(2026, 6, 15)
 DAYS = [MONDAY + timedelta(days=i) for i in range(7)]
 
 
+@pytest.fixture(autouse=True)
+def frozen_today(monkeypatch):
+    """generate_weekly_schedule now excludes days before "today" from new
+    placements (audit fix #3) — pin today to the start of the fixed MONDAY
+    week these tests plan around, so none of that week is treated as
+    already elapsed relative to whatever date the suite actually runs on."""
+    from app.core import date_service
+    monkeypatch.setattr(date_service, "today", lambda: MONDAY)
+
+
 @pytest.fixture
 def conn(tmp_path):
     db_path = tmp_path / "test.db"
@@ -151,3 +161,21 @@ def test_generate_week_external_contract_is_unchanged(wiring):
     assert any(p.task_id == task_id for p in placements)
     persisted = wiring["schedule_repo"].get_week(MONDAY)
     assert any(e.task_id == task_id for e in persisted)
+
+
+def test_generate_week_on_a_thursday_never_places_new_work_on_mon_tue_wed(wiring, monkeypatch):
+    """Audit fix #3, exercised through the actual service entry point
+    Generate Week uses (not just the core allocator directly): running
+    Generate Week mid-week must not place any task on an already-elapsed
+    day of the current week."""
+    from app.core import date_service
+    thursday = DAYS[3]
+    monkeypatch.setattr(date_service, "today", lambda: thursday)
+    task_ids = [make_task(wiring, effort=1) for _ in range(5)]
+
+    schedule = wiring["schedule_service"].generate_week(MONDAY)
+
+    placements = [p for placements in schedule.values() for p in placements if p.task_id is not None]
+    assert len(placements) == len(task_ids)
+    assert all(p.date >= thursday for p in placements)
+    assert not any(p.date in (MONDAY, DAYS[1], DAYS[2]) for p in placements)

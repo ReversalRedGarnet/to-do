@@ -19,6 +19,16 @@ from app.services.settings_service import SettingsService
 MONDAY = date(2026, 6, 15)
 
 
+@pytest.fixture(autouse=True)
+def frozen_today(monkeypatch):
+    """generate_weekly_schedule now excludes days before "today" from new
+    placements (audit fix #3) — pin today to the start of the fixed MONDAY
+    week these tests plan around, so none of that week is treated as
+    already elapsed relative to whatever date the suite actually runs on."""
+    from app.core import date_service
+    monkeypatch.setattr(date_service, "today", lambda: MONDAY)
+
+
 @pytest.fixture
 def conn(tmp_path):
     db_path = tmp_path / "test.db"
@@ -115,3 +125,43 @@ def test_explicit_capacities_argument_still_overrides_settings(conn):
 
     placements = [p for placements in schedule.values() for p in placements]
     assert placements[0].overcommitted is False
+
+
+# --- Audit item: settings fallbacks must log a warning, not fail silently ---
+
+def test_corrupted_daily_capacities_logs_a_warning_and_falls_back(conn, caplog):
+    import json
+    conn.execute("UPDATE settings SET daily_capacities = ? WHERE id = 1", (json.dumps(["BOGUS"]),))
+    conn.commit()
+    settings_repo = SettingsRepository(conn)
+    schedule_service = ScheduleService(
+        TaskRepository(conn), ScheduleRepository(conn), FixedEventRepository(conn), settings_repo,
+    )
+
+    with caplog.at_level("WARNING", logger="app.services.schedule_service"):
+        capacities = schedule_service._default_capacities()
+
+    assert capacities == DEFAULT_WEEKLY_CAPACITY
+    assert any("daily_capacities" in record.message for record in caplog.records)
+    assert any(record.levelname == "WARNING" for record in caplog.records)
+
+
+class _BrokenSettingsRepository:
+    """Stands in for a settings row that's present but structurally
+    broken (e.g. a schema/migration mismatch) — `.get()` returning
+    something that doesn't have the expected week_gen_* attributes is
+    exactly the AttributeError `_week_gen_settings` guards against."""
+
+    def get(self):
+        return None
+
+
+def test_corrupted_week_gen_settings_logs_a_warning_and_falls_back(caplog):
+    schedule_service = ScheduleService(None, None, None, _BrokenSettingsRepository())
+
+    with caplog.at_level("WARNING", logger="app.services.schedule_service"):
+        weekend_allowed, allow_automove, target = schedule_service._week_gen_settings()
+
+    assert (weekend_allowed, allow_automove) == (True, True)
+    assert any("week-generation" in record.message for record in caplog.records)
+    assert any(record.levelname == "WARNING" for record in caplog.records)

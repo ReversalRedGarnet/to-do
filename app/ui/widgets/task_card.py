@@ -44,15 +44,19 @@ class TaskCard(QFrame):
     delete_requested = Signal(int)
     duplicate_requested = Signal(int)
     move_to_project_requested = Signal(int)
+    lock_toggle_requested = Signal(int)
 
-    def __init__(self, task, color, parent=None, *, project_lookup=None, today=None, show_defer=True):
+    def __init__(self, task, color, parent=None, *, project_lookup=None, today=None, show_defer=True,
+                 show_lock=False, locked=False):
         super().__init__(parent)
         self.task_id = task.id
         self.task_status = task.status
         self._is_fixed_event = task.task_type.value == "fixed_event"
         self._hex_color = _COLOR_HEX.get(color, _COLOR_HEX[None])
         self._selected = False
-        self._draggable = not self._is_fixed_event and task.status in _ACTIONABLE_STATUSES
+        self._show_lock = show_lock
+        self._locked = locked
+        self._draggable = not self._is_fixed_event and task.status in _ACTIONABLE_STATUSES and not locked
         self._press_pos = None
         self._build(task, project_lookup or {}, today, show_defer)
 
@@ -78,6 +82,8 @@ class TaskCard(QFrame):
         project_name = project_lookup.get(task.project_id) if task.project_id else None
         if project_name:
             meta_bits.append(project_name)
+        if self._show_lock and self._locked:
+            meta_bits.append("🔒 Locked")
         meta_label = QLabel(" · ".join(meta_bits))
         meta_label.setWordWrap(True)
         meta_label.setStyleSheet("color: palette(mid);")
@@ -151,9 +157,10 @@ class TaskCard(QFrame):
 
     def contextMenuEvent(self, event) -> None:
         """Right-click menu (spec: Complete/Reschedule/Edit/Move to
-        Project/Delete/Duplicate). Reschedule reuses the same
-        defer_clicked signal the Defer button already emits — same
-        dialog, just a second way to trigger it."""
+        Project/Delete/Duplicate, plus Lock/Unlock where the card
+        represents a real day placement — see `show_lock`). Reschedule
+        reuses the same defer_clicked signal the Defer button already
+        emits — same dialog, just a second way to trigger it."""
         menu = QMenu(self)
         actionable = not self._is_fixed_event and self.task_status in _ACTIONABLE_STATUSES
 
@@ -163,6 +170,9 @@ class TaskCard(QFrame):
         menu.addAction("Edit", lambda: self.edit_clicked.emit(self.task_id))
         menu.addAction("Move to Project", lambda: self.move_to_project_requested.emit(self.task_id))
         menu.addAction("Duplicate", lambda: self.duplicate_requested.emit(self.task_id))
+        if self._show_lock:
+            label = "Unlock" if self._locked else "Lock to this day"
+            menu.addAction(label, lambda: self.lock_toggle_requested.emit(self.task_id))
         menu.addSeparator()
         menu.addAction("Delete", lambda: self.delete_requested.emit(self.task_id))
         menu.exec(event.globalPos())

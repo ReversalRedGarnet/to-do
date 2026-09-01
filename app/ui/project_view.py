@@ -102,9 +102,21 @@ class ProjectDetailDialog(QDialog):
         scroll.setWidget(content)
         outer.addWidget(scroll)
 
-        self._archive_button = QPushButton("Archive Project")
-        self._archive_button.clicked.connect(self._on_archive)
-        outer.addWidget(self._archive_button)
+        if project.active:
+            self._archive_button = QPushButton("Archive Project")
+            self._archive_button.clicked.connect(self._on_archive)
+            outer.addWidget(self._archive_button)
+        else:
+            note = QLabel(
+                "This project is archived — its child tasks are excluded from "
+                "week planning and the Today view while archived."
+            )
+            note.setWordWrap(True)
+            note.setStyleSheet("color: palette(mid);")
+            outer.addWidget(note)
+            self._unarchive_button = QPushButton("Restore from Archive")
+            self._unarchive_button.clicked.connect(self._on_unarchive)
+            outer.addWidget(self._unarchive_button)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.reject)
@@ -161,6 +173,10 @@ class ProjectDetailDialog(QDialog):
         if confirm == QMessageBox.StandardButton.Yes:
             self._project_service.archive(self._project.id)
             self.accept()
+
+    def _on_unarchive(self) -> None:
+        self._project_service.update(self._project.id, active=True)
+        self.accept()
 
 
 class ProjectCard(QFrame):
@@ -247,8 +263,12 @@ class ProjectView(QWidget):
         self._archived_section.clear_body()
         archived_projects = self._projects.list_archived()
         for project in archived_projects:
-            label = QLabel(project.name)
-            self._archived_section.body_layout.addWidget(label)
+            progress = self._task_service.project_progress(project.id)
+            open_count = self._task_service.count_open_tasks(project.id)
+            next_item = self._task_service.next_actionable_item(project.id)
+            card = ProjectCard(project, progress, open_count, next_item,
+                                on_open=lambda p=project: self._open_detail(p))
+            self._archived_section.body_layout.addWidget(card)
         self._archived_section.set_count(len(archived_projects))
 
     def _open_detail(self, project) -> None:

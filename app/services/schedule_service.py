@@ -1,5 +1,6 @@
 """Orchestrates core.scheduling_engine against real repositories."""
 
+import logging
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Dict, List, Optional, Set
@@ -10,6 +11,8 @@ from app.core.priority_engine import calculate_priority_score, priority_label
 from app.core.scheduling_engine import diff_week_plan, generate_weekly_schedule
 from app.models.schedule import ScheduleEntry
 from app.models.task import TaskStatus
+
+logger = logging.getLogger(__name__)
 
 _AGGRESSIVENESS_UTILIZATION_TARGET = {
     "relaxed": 0.60,
@@ -60,7 +63,11 @@ class ScheduleService:
         try:
             names = self._settings.get().daily_capacities
             return [Capacity[name] for name in names]
-        except (KeyError, TypeError, ValueError):
+        except (KeyError, TypeError, ValueError) as exc:
+            logger.warning(
+                "Settings.daily_capacities is corrupted or malformed (%s) — falling back to "
+                "DEFAULT_WEEKLY_CAPACITY", exc,
+            )
             return DEFAULT_WEEKLY_CAPACITY
 
     def capacity_for_day(self, day: date) -> Capacity:
@@ -84,7 +91,12 @@ class ScheduleService:
                 settings.week_gen_aggressiveness, UTILIZATION_TARGET
             )
             return settings.week_gen_weekend_allowed, settings.week_gen_allow_low_priority_automove, target
-        except (AttributeError, TypeError):
+        except (AttributeError, TypeError) as exc:
+            logger.warning(
+                "Settings week-generation fields are corrupted or malformed (%s) — falling back "
+                "to weekend_allowed=True, allow_low_priority_automove=True, standard utilization_target",
+                exc,
+            )
             return True, True, UTILIZATION_TARGET
 
     def preview_week(self, week_start: date, *, capacities: Optional[list] = None,
@@ -141,7 +153,7 @@ class ScheduleService:
         schedule = generate_weekly_schedule(
             tasks, fixed_events, week_start, capacities,
             locked_placements=locked_placements, weekend_allowed=weekend_allowed,
-            utilization_target=utilization_target,
+            utilization_target=utilization_target, today=date_service.today(),
         )
         changes = diff_week_plan(existing_entries, schedule)
 
@@ -256,6 +268,15 @@ class ScheduleService:
         it as a manual placement so a later Generate Week never silently
         relocates it."""
         self._schedules.upsert_task_day(task_id, week_start, new_date, reason="USER_SELECTED")
+
+    def apply_rebalance_placement(self, task_id: int, week_start: date, new_date: date, reason: str) -> None:
+        """Persists a single-swap missed-task-recovery placement (see
+        core.scheduling_engine.rebalance_after_missed_task and its caller
+        in ReconciliationService) — unlike `schedule_task_to_day`, this is
+        never manual_override, since it's an automatic rebalance, not a
+        deliberate user placement, so a later Generate Week can still
+        freely reassign it."""
+        self._schedules.upsert_task_day(task_id, week_start, new_date, reason=reason, manual_override=False)
 
     def unschedule_task(self, task_id: int, week_start: date) -> None:
         """Drag-and-drop onto "Unscheduled" (Phase 4) — removes the

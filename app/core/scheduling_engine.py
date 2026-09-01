@@ -77,6 +77,7 @@ def generate_weekly_schedule(
     locked_placements: Optional[List[Tuple[object, date]]] = None,
     utilization_target: float = UTILIZATION_TARGET,
     weekend_allowed: bool = True,
+    today: Optional[date] = None,
 ):
     """Returns a dict of date -> list of Placement for every day of the week.
 
@@ -88,7 +89,17 @@ def generate_weekly_schedule(
     `weekend_allowed=False` removes Saturday/Sunday from the days the
     greedy allocator may place *new* (non-locked, non-fixed) work on —
     locked placements and fixed events on a weekend day are unaffected,
-    since neither is ever moved by this function."""
+    since neither is ever moved by this function.
+    `today`, when given, removes any day strictly before it from the days
+    *new* work may be placed on — a day that has already elapsed within
+    the week being planned is never a legitimate placement for a fresh
+    task (it would be invisible to the Today view and silently drop out
+    of that week's history at the next weekly purge). Locked placements
+    and fixed events are unaffected, same as `weekend_allowed`. A `today`
+    outside the week being planned (a future week, or a fully-elapsed
+    past week) is a no-op or empties the placeable set respectively —
+    correct either way, since callers only pass it when there's a
+    genuine "current week" in play."""
     week_dates = _week_dates(week_start_date)
     capacity_units = _capacity_units(capacities)
     target_budget = {
@@ -125,6 +136,8 @@ def generate_weekly_schedule(
         target_budget[locked_date] -= cost
 
     placeable_dates = week_dates if weekend_allowed else week_dates[:5]
+    if today is not None:
+        placeable_dates = [d for d in placeable_dates if d >= today]
 
     eligible = [
         (task, _eligible_days(task, placeable_dates))

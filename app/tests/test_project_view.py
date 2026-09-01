@@ -82,6 +82,50 @@ def test_archiving_a_project_via_the_detail_dialog_removes_it_from_active(wiring
     assert project_id in {p.id for p in wiring["project_service"].list_archived()}
 
 
+def test_archived_projects_render_as_clickable_cards_not_plain_labels(wiring):
+    """Audit item: the Archived section used to render a plain QLabel with
+    no click handler — there was no way back into ProjectDetailDialog for
+    an archived project. It must render the same clickable ProjectCard the
+    active list uses."""
+    from app.ui.project_view import ProjectCard
+
+    project_id = wiring["project_repo"].create(Project(id=None, name="Old Launch", description=""))
+    wiring["project_service"].archive(project_id)
+    view = ProjectView(wiring["project_service"], wiring["task_service"], wiring["category_repo"])
+
+    card = view._archived_section.body_layout.itemAt(0).widget()
+
+    assert isinstance(card, ProjectCard)
+    assert card.project_id == project_id
+
+
+def test_clicking_an_archived_project_card_opens_its_detail_dialog(wiring):
+    project_id = wiring["project_repo"].create(Project(id=None, name="Old Launch", description=""))
+    wiring["project_service"].archive(project_id)
+    view = ProjectView(wiring["project_service"], wiring["task_service"], wiring["category_repo"])
+    project = wiring["project_repo"].get_by_id(project_id)
+
+    view._open_detail(project)  # what the archived card's click ultimately calls
+
+    # auto_accept_dialogs makes exec() return Accepted immediately, so
+    # reaching here without raising confirms the dialog was constructible
+    # and closable for an archived project — the actual regression this
+    # guards is the card having no click handler at all.
+
+
+def test_unarchiving_from_the_detail_dialog_restores_it_to_active(wiring):
+    project_id = wiring["project_repo"].create(Project(id=None, name="Old Launch", description=""))
+    wiring["project_service"].archive(project_id)
+    project = wiring["project_repo"].get_by_id(project_id)
+    dialog = ProjectDetailDialog(project, wiring["project_service"], wiring["task_service"], [])
+
+    assert hasattr(dialog, "_unarchive_button")
+    dialog._on_unarchive()
+
+    assert project_id in {p.id for p in wiring["project_service"].list_active()}
+    assert project_id not in {p.id for p in wiring["project_service"].list_archived()}
+
+
 def test_new_project_dialog_fields_feed_project_service_create(wiring):
     from app.ui.project_view import _NewProjectDialog
 

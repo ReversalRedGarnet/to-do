@@ -17,10 +17,12 @@ def _iso_week(d: date) -> str:
 
 
 class TaskService:
-    def __init__(self, task_repository, notification_service, recurrence_service=None):
+    def __init__(self, task_repository, notification_service, recurrence_service=None,
+                 schedule_repository=None):
         self._tasks = task_repository
         self._notifications = notification_service
         self._recurrence = recurrence_service
+        self._schedules = schedule_repository
 
     def create_task(
         self,
@@ -64,8 +66,12 @@ class TaskService:
     def get_task(self, task_id: int) -> Optional[Task]:
         return self._tasks.get_by_id(task_id)
 
-    def list_all(self, include_cancelled: bool = False) -> list:
-        return self._tasks.list_all(include_cancelled=include_cancelled)
+    def list_all(self, include_cancelled: bool = False,
+                 exclude_archived_project_children: bool = False) -> list:
+        return self._tasks.list_all(
+            include_cancelled=include_cancelled,
+            exclude_archived_project_children=exclude_archived_project_children,
+        )
 
     def search_tasks(self, query: str) -> list:
         """Phase 7 Ctrl+F search — case-insensitive title substring match."""
@@ -98,7 +104,7 @@ class TaskService:
         callers pair this with services.schedule_service to move the
         persisted schedule row."""
         task = self._tasks.get_by_id(task_id)
-        task.status = TaskStatus.SCHEDULED
+        task.status = TaskStatus.DEFERRED
         task.deferred_at = today or date_service.today()
         task.current_scheduled_date = defer_to_date
         task.times_deferred += 1
@@ -156,9 +162,15 @@ class TaskService:
         return task
 
     def cancel_task(self, task_id: int) -> Task:
+        """Soft cancel — the task row stays (spec: history), but its
+        schedule row(s) are proactively removed rather than left to be
+        filtered out at every read site until some future week's
+        Generate Week incidentally sweeps them via replace_week."""
         task = self._tasks.get_by_id(task_id)
         task.status = TaskStatus.CANCELLED
         self._tasks.update(task)
+        if self._schedules is not None:
+            self._schedules.delete_all_for_task(task_id)
         return task
 
     def delete_task(self, task_id: int) -> Task:

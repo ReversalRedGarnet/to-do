@@ -82,10 +82,12 @@ class ScheduleRepository:
         self._conn.commit()
 
     def move_task(self, task_id: int, week_start: date, new_date: date) -> None:
+        """Same locked-row protection as `upsert_task_day` — a locked row
+        is a no-op here rather than silently moved."""
         self._conn.execute(
             """
             UPDATE task_schedule SET scheduled_date = ?, manual_override = 1
-            WHERE task_id = ? AND week_start = ?
+            WHERE task_id = ? AND week_start = ? AND locked = 0
             """,
             (new_date.isoformat(), task_id, week_start.isoformat()),
         )
@@ -96,7 +98,13 @@ class ScheduleRepository:
         """Unlike `move_task` (UPDATE-only, safe only when a row already
         exists), this inserts a row if the task has never been scheduled
         this week — needed for drag-and-drop from an "Unscheduled" area
-        onto a day (Phase 4) and for Generate Week's apply step (Phase 3)."""
+        onto a day (Phase 4) and for Generate Week's apply step (Phase 3).
+        The `WHERE task_schedule.locked = 0` on the conflict branch is the
+        actual enforcement of "a locked task is never reassigned" at the
+        data layer — every caller (drag-and-drop, missed-task rebalance,
+        Generate Week's apply step) goes through this one path, so this
+        is the one place that has to hold regardless of what any of them
+        individually remember to check."""
         self._conn.execute(
             """
             INSERT INTO task_schedule
@@ -106,6 +114,7 @@ class ScheduleRepository:
                 scheduled_date = excluded.scheduled_date,
                 schedule_reason = excluded.schedule_reason,
                 manual_override = excluded.manual_override
+            WHERE task_schedule.locked = 0
             """,
             (task_id, week_start.isoformat(), scheduled_date.isoformat(), reason, int(manual_override)),
         )
@@ -116,4 +125,14 @@ class ScheduleRepository:
             "DELETE FROM task_schedule WHERE task_id = ? AND week_start = ?",
             (task_id, week_start.isoformat()),
         )
+        self._conn.commit()
+
+    def delete_all_for_task(self, task_id: int) -> None:
+        """Every task_schedule row for this task, across every week —
+        used by TaskService.cancel_task so a cancelled task's schedule
+        row(s) don't linger until incidentally swept by some future
+        week's replace_week call. A hard delete_task cascades this via
+        the tasks table's own FK instead; cancel keeps the task row, so
+        it has to do this explicitly."""
+        self._conn.execute("DELETE FROM task_schedule WHERE task_id = ?", (task_id,))
         self._conn.commit()

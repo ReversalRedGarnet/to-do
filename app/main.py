@@ -115,7 +115,7 @@ def main() -> int:
     notification_service = WindowsNotificationService(settings_repo)
 
     recurrence_service = RecurrenceService(task_repo, recurrence_repo)
-    task_service = TaskService(task_repo, notification_service, recurrence_service)
+    task_service = TaskService(task_repo, notification_service, recurrence_service, schedule_repo)
     schedule_service = ScheduleService(task_repo, schedule_repo, fixed_event_repo, settings_repo)
     history_service = HistoryService(history_repo)
     settings_service = SettingsService(settings_repo)

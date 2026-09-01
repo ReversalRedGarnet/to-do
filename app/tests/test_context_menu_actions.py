@@ -102,6 +102,34 @@ def test_restore_task_recreates_it_with_a_new_id(wiring):
     assert fetched.title == "Bring back"
 
 
+def test_cancel_task_proactively_deletes_its_schedule_rows(wiring):
+    """Audit item: TaskService.cancel_task used to only touch the task
+    row, leaving a stale task_schedule row to be filtered out at every
+    read site until some future week's Generate Week (replace_week)
+    incidentally swept it. Confirmed here with no replace_week call in
+    between — the row must be gone immediately after cancel."""
+    task_service = TaskService(wiring["task_repo"], NullNotificationService(),
+                                schedule_repository=wiring["schedule_repo"])
+    task_id = make_scheduled_task(wiring, title="Cancel me")
+    assert wiring["schedule_repo"].get_week(WEEK_START) != []
+
+    task_service.cancel_task(task_id)
+
+    assert wiring["schedule_repo"].get_week(WEEK_START) == []
+    cancelled = wiring["task_repo"].get_by_id(task_id)
+    assert cancelled.status == TaskStatus.CANCELLED  # the task row itself is kept, per spec
+
+
+def test_cancel_task_without_a_schedule_repository_still_cancels(wiring):
+    """schedule_repository stays optional — every existing TaskService(...)
+    call site without it (most of this test suite) must keep working."""
+    task_id = make_scheduled_task(wiring, title="No schedule repo wired")
+
+    cancelled = wiring["task_service"].cancel_task(task_id)  # wiring's TaskService has no schedule_repository
+
+    assert cancelled.status == TaskStatus.CANCELLED
+
+
 # --- TodayPanel: delete + undo, duplicate, move to project ---
 
 def test_today_panel_delete_then_undo_restores_the_task_on_the_board(wiring):

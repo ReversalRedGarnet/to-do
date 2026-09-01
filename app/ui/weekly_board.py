@@ -249,7 +249,7 @@ class WeeklyBoard(QWidget, TaskSelectionMixin):
                 day_load += EFFORT_UNITS[task.effort]
                 context = {"expected_date": entry.scheduled_date}
                 color = derive_color(task, date.today(), context)
-                card = TaskCard(task, color)
+                card = TaskCard(task, color, show_lock=True, locked=entry.locked)
                 card.set_selected(task.id == self._selected_task_id)
                 card.complete_clicked.connect(self._on_complete)
                 card.defer_clicked.connect(self._on_defer)
@@ -258,6 +258,7 @@ class WeeklyBoard(QWidget, TaskSelectionMixin):
                 card.delete_requested.connect(self._on_delete_requested)
                 card.duplicate_requested.connect(self._on_duplicate)
                 card.move_to_project_requested.connect(self._on_move_to_project)
+                card.lock_toggle_requested.connect(self._on_lock_toggle)
                 container.insertWidget(container.count() - 1, card)
 
             self._update_load_label(day_date, day_load)
@@ -308,7 +309,7 @@ class WeeklyBoard(QWidget, TaskSelectionMixin):
         the displayed week, and isn't already placed somewhere this week."""
         week_end = self._week_start + timedelta(days=6)
         candidates = [
-            t for t in self._task_service.list_all()
+            t for t in self._task_service.list_all(exclude_archived_project_children=True)
             if t.status == TaskStatus.PENDING
             and t.id not in scheduled_task_ids
             and (t.due_date is None or self._week_start <= t.due_date <= week_end)
@@ -320,8 +321,22 @@ class WeeklyBoard(QWidget, TaskSelectionMixin):
         task = self._task_service.get_task(task_id)
         if task is None or task.status == TaskStatus.CANCELLED:
             return
+        if self._is_locked_this_week(task_id):
+            return  # a locked task is never reassigned, including by drag-and-drop
         self._schedule_service.schedule_task_to_day(task_id, self._week_start, day_date)
         self._task_service.schedule_to_day(task_id, day_date)
+        self.refresh()
+
+    def _is_locked_this_week(self, task_id: int) -> bool:
+        schedule = self._schedule_service.get_week(self._week_start)
+        return any(e.task_id == task_id and e.locked for entries in schedule.values() for e in entries)
+
+    def _on_lock_toggle(self, task_id: int) -> None:
+        schedule = self._schedule_service.get_week(self._week_start)
+        entry = next((e for entries in schedule.values() for e in entries if e.task_id == task_id), None)
+        if entry is None:
+            return
+        self._schedule_service.lock_task(task_id, self._week_start, locked=not entry.locked)
         self.refresh()
 
     def _on_unschedule(self, task_id: int) -> None:

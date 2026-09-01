@@ -20,6 +20,16 @@ MONDAY = date(2026, 6, 15)
 DAYS = [MONDAY + timedelta(days=i) for i in range(7)]
 
 
+@pytest.fixture(autouse=True)
+def frozen_today(monkeypatch):
+    """generate_weekly_schedule now excludes days before "today" from new
+    placements (audit fix #3) — pin today to the start of the fixed MONDAY
+    week these tests plan around, so none of that week is treated as
+    already elapsed relative to whatever date the suite actually runs on."""
+    from app.core import date_service
+    monkeypatch.setattr(date_service, "today", lambda: MONDAY)
+
+
 @pytest.fixture
 def conn(tmp_path):
     db_path = tmp_path / "test.db"

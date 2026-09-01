@@ -117,7 +117,7 @@ class TodayPanel(QWidget, TaskSelectionMixin):
         expected_date_by_task = {e.task_id: e.scheduled_date for e in todays_entries}
         categories = self._categories.list_all()
 
-        all_tasks = self._task_service.list_all()
+        all_tasks = self._task_service.list_all(exclude_archived_project_children=True)
         sections = build_today_sections(all_tasks, today, scheduled_ids)
 
         self._render_section(self._overdue_section, sections.overdue, today,
@@ -462,6 +462,14 @@ def build_main_window(
         today_panel.clear_selection()
         week_board.clear_selection()
         stack.setCurrentIndex(index)
+        # Each panel only refreshes itself when its own quick-add/edit/
+        # delete actions fire — a task added from the Week tab's entry
+        # box, for instance, never touches today_panel. Refresh every
+        # data-bound panel on every switch so none can show stale state
+        # just because the change that produced it happened elsewhere.
+        today_panel.refresh()
+        week_board.refresh()
+        project_panel.refresh()
 
     sidebar.currentRowChanged.connect(_on_sidebar_row_changed)
     sidebar.setCurrentRow(0)

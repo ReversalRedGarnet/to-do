@@ -163,11 +163,18 @@ def test_capacity_for_day_is_unaffected_by_week_generation_settings(wiring):
     assert after == before == (Capacity.MEDIUM, Capacity.HIGH, Capacity.LOW)
 
 
-def test_preview_week_overcommitted_boundary_matches_capacity_constants_at_default_settings(wiring):
+def test_preview_week_overcommitted_boundary_matches_capacity_constants_at_default_settings(wiring, monkeypatch):
     """At default week-gen settings (standard aggressiveness, weekend
     allowed, auto-move allowed) Generate Week's overload behavior must be
     driven by exactly the same capacity*utilization budget as the core
-    allocator test above — Monday is MEDIUM(6), budget 4.5."""
+    allocator test above — Monday is MEDIUM(6), budget 4.5.
+
+    All 5 tasks are confined to WEEK_START (Monday) itself, so "today"
+    must be pinned there too — otherwise the audit fix #3 elapsed-day
+    filter would (correctly, but irrelevantly to what this test checks)
+    exclude Monday once the suite runs past it."""
+    from app.core import date_service
+    monkeypatch.setattr(date_service, "today", lambda: WEEK_START)
     for _ in range(5):
         make_task(wiring, effort=1, available_from=WEEK_START, due_date=WEEK_START)
 

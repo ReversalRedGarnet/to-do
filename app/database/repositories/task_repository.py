@@ -81,10 +81,17 @@ class TaskRepository:
         row = self._conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         return _row_to_task(row) if row else None
 
-    def list_all(self, include_cancelled: bool = False) -> List[Task]:
-        query = "SELECT * FROM tasks"
+    def list_all(self, include_cancelled: bool = False,
+                 exclude_archived_project_children: bool = False) -> List[Task]:
+        query = "SELECT tasks.* FROM tasks"
+        conditions = []
+        if exclude_archived_project_children:
+            query += " LEFT JOIN projects ON tasks.project_id = projects.id"
+            conditions.append("(tasks.project_id IS NULL OR projects.active = 1)")
         if not include_cancelled:
-            query += " WHERE status != 'cancelled'"
+            conditions.append("tasks.status != 'cancelled'")
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
         rows = self._conn.execute(query).fetchall()
         return [_row_to_task(r) for r in rows]
 
@@ -115,13 +122,19 @@ class TaskRepository:
 
     def list_eligible_for_week(self, week_start: date, week_end: date) -> List[Task]:
         """Pending/scheduled tasks whose [available_from, due_date] window
-        could overlap this week — candidates for generate_weekly_schedule."""
+        could overlap this week — candidates for generate_weekly_schedule.
+        A child of an archived project is never a candidate — archiving a
+        project takes its children out of week planning entirely, without
+        deleting or force-completing them (they're still visible/editable
+        via the project's own detail view)."""
         rows = self._conn.execute(
             """
-            SELECT * FROM tasks
-            WHERE status IN ('pending', 'scheduled')
-              AND (due_date IS NULL OR due_date >= ?)
-              AND (available_from IS NULL OR available_from <= ?)
+            SELECT tasks.* FROM tasks
+            LEFT JOIN projects ON tasks.project_id = projects.id
+            WHERE tasks.status IN ('pending', 'scheduled')
+              AND (tasks.due_date IS NULL OR tasks.due_date >= ?)
+              AND (tasks.available_from IS NULL OR tasks.available_from <= ?)
+              AND (tasks.project_id IS NULL OR projects.active = 1)
             """,
             (week_start.isoformat(), week_end.isoformat()),
         ).fetchall()

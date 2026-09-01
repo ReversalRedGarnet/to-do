@@ -117,6 +117,69 @@ def test_run_leaves_consistent_scheduled_task_untouched(wiring):
     assert unchanged.current_scheduled_date == MONDAY
 
 
+def test_run_rebalances_a_missed_task_instead_of_leaving_it_unscheduled(wiring):
+    """Audit fix #2: core.scheduling_engine.rebalance_after_missed_task
+    was fully implemented but never called from anywhere — a missed task
+    just sat PENDING until the next full Generate Week. `run()` must now
+    immediately place it on the least-loaded remaining day this week,
+    pushing the lightest lower-priority task already there to a later
+    day rather than doing nothing until the next full re-plan."""
+    task_repo = wiring["task_repo"]
+    tuesday = MONDAY + timedelta(days=1)
+    wednesday = MONDAY + timedelta(days=2)
+
+    missed_id = task_repo.create(make_task(due_date=wednesday, effort=1))
+    light_id = task_repo.create(make_task(effort=1, importance=1, urgency=1, seriousness=1))
+    heavy_id = task_repo.create(make_task(effort=2))
+    wiring["schedule_repo"].replace_week(MONDAY, [
+        ScheduleEntry(id=None, task_id=missed_id, week_start=MONDAY,
+                       scheduled_date=MONDAY, schedule_reason="TEST"),
+        ScheduleEntry(id=None, task_id=light_id, week_start=MONDAY,
+                       scheduled_date=tuesday, schedule_reason="TEST"),
+        ScheduleEntry(id=None, task_id=heavy_id, week_start=MONDAY,
+                       scheduled_date=wednesday, schedule_reason="TEST"),
+    ])
+    wiring["app_state_repo"].set_last_known_date(MONDAY)
+
+    result = wiring["reconciliation_service"].run(tuesday)
+
+    assert result.tasks_marked_missed == [missed_id]
+
+    missed_task = task_repo.get_by_id(missed_id)
+    assert missed_task.status == TaskStatus.SCHEDULED
+    assert missed_task.current_scheduled_date == tuesday  # the day it was pushed onto
+
+    pushed_task = task_repo.get_by_id(light_id)
+    assert pushed_task.current_scheduled_date is not None
+    assert pushed_task.current_scheduled_date > tuesday  # bumped to make room, not left in place
+
+    rows = {e.task_id: e for e in wiring["schedule_repo"].get_week(MONDAY)}
+    assert rows[missed_id].scheduled_date == tuesday
+    assert rows[light_id].scheduled_date == pushed_task.current_scheduled_date
+    assert rows[heavy_id].scheduled_date == wednesday  # untouched — not the pushed task
+
+
+def test_run_skips_rebalance_when_the_missed_tasks_week_has_already_elapsed(wiring):
+    """A multi-week gap must not try to rebalance into a week that's
+    entirely behind "today" — that stays the full Generate Week's job."""
+    task_repo = wiring["task_repo"]
+    missed_id = task_repo.create(make_task())
+    wiring["schedule_repo"].replace_week(
+        MONDAY,
+        [ScheduleEntry(id=None, task_id=missed_id, week_start=MONDAY,
+                        scheduled_date=MONDAY, schedule_reason="TEST")],
+    )
+    wiring["app_state_repo"].set_last_known_date(MONDAY)
+
+    next_monday = MONDAY + timedelta(days=7)
+    result = wiring["reconciliation_service"].run(next_monday)
+
+    assert missed_id in result.tasks_marked_missed
+    restored = task_repo.get_by_id(missed_id)
+    assert restored.status == TaskStatus.PENDING  # left for the next Generate Week, not rebalanced
+    assert restored.current_scheduled_date is None
+
+
 def test_run_archives_week_via_history_service_on_boundary_crossing(wiring):
     task_repo = wiring["task_repo"]
     task_id = task_repo.create(make_task())

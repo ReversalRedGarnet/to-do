@@ -6,7 +6,7 @@ from datetime import date
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QDateEdit, QDialog, QHBoxLayout, QLabel, QLineEdit,
+    QApplication, QComboBox, QDateEdit, QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton,
     QScrollArea, QSpinBox, QStackedWidget, QTextEdit, QVBoxLayout, QWidget,
 )
@@ -24,6 +24,7 @@ from app.ui.settings_view import SettingsView
 from app.ui.task_editor import MoveToProjectDialog, TaskEditorDialog
 from app.ui.task_entry import QuickTaskEntry
 from app.ui.weekly_board import WeeklyBoard
+from app.ui.style import FONT_META, PAGE_MARGIN, SPACING_LG, SPACING_MD, SPACING_SM, mark_primary
 from app.ui.widgets.collapsible_section import CollapsibleSection
 from app.ui.widgets.task_card import TaskCard
 from app.ui.widgets.task_selection_mixin import TaskSelectionMixin
@@ -42,10 +43,12 @@ class TodayPanel(QWidget, TaskSelectionMixin):
         self._last_deleted = None
 
         outer = QVBoxLayout(self)
+        outer.setContentsMargins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
+        outer.setSpacing(SPACING_MD)
 
         header_row = QHBoxLayout()
         self._header = QLabel("")
-        self._header.setStyleSheet("font-weight: 600; color: palette(mid);")
+        self._header.setStyleSheet(FONT_META)
         header_row.addWidget(self._header, stretch=1)
         self._undo_delete_button = QPushButton("Undo Delete")
         self._undo_delete_button.setVisible(False)
@@ -64,6 +67,8 @@ class TodayPanel(QWidget, TaskSelectionMixin):
         scroll.setWidgetResizable(True)
         sections_widget = QWidget()
         sections_layout = QVBoxLayout(sections_widget)
+        sections_layout.setContentsMargins(0, 0, SPACING_SM, 0)
+        sections_layout.setSpacing(SPACING_LG)
 
         self._overdue_section = CollapsibleSection("Overdue")
         self._today_section = CollapsibleSection("Today")
@@ -394,13 +399,17 @@ def build_main_window(
 
     central = QWidget()
     root_layout = QHBoxLayout(central)
+    root_layout.setContentsMargins(0, 0, 0, 0)
+    root_layout.setSpacing(0)
 
     sidebar_labels = ["Today", "This Week", "Projects"]
     if settings_service is not None:
         sidebar_labels.append("Settings")
 
     sidebar = QListWidget()
-    sidebar.setMaximumWidth(160)
+    sidebar.setObjectName("sidebar")
+    sidebar.setMaximumWidth(180)
+    sidebar.setFrameShape(QFrame.Shape.NoFrame)
     for label in sidebar_labels:
         QListWidgetItem(label, sidebar)
 
@@ -412,12 +421,15 @@ def build_main_window(
 
     week_panel = QWidget()
     week_layout = QVBoxLayout(week_panel)
+    week_layout.setContentsMargins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
+    week_layout.setSpacing(SPACING_MD)
     week_entry = QuickTaskEntry(task_service)
     week_board = WeeklyBoard(task_service, schedule_service, category_repository, recurrence_service,
                               project_repository=project_repository)
     week_entry.task_created.connect(lambda _id: week_board.refresh())
 
     generate_button = QPushButton("Generate Week")
+    mark_primary(generate_button)
     generate_button.clicked.connect(week_board.run_generate_week)
 
     undo_button = QPushButton("Undo")
@@ -476,7 +488,12 @@ def build_main_window(
     sidebar.currentRowChanged.connect(_on_sidebar_row_changed)
     sidebar.setCurrentRow(0)
 
+    sidebar_divider = QWidget()
+    sidebar_divider.setFixedWidth(1)
+    sidebar_divider.setStyleSheet("background: palette(mid);")
+
     root_layout.addWidget(sidebar)
+    root_layout.addWidget(sidebar_divider)
     root_layout.addWidget(stack, stretch=1)
 
     window.setCentralWidget(central)

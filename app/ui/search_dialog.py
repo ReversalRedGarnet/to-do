@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QDialog, QLineEdit, QListWidget, QListWidgetItem, QVBoxLayout,
 )
 
+from app.ui.style import PAGE_MARGIN, SPACING_MD, category_icon, is_dark_active
 from app.ui.task_editor import TaskEditorDialog
 
 
@@ -20,6 +21,8 @@ class SearchDialog(QDialog):
         self.resize(420, 400)
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
+        layout.setSpacing(SPACING_MD)
         self._input = QLineEdit()
         self._input.setPlaceholderText("Search by title…")
         self._input.textChanged.connect(self._on_query_changed)
@@ -33,8 +36,10 @@ class SearchDialog(QDialog):
 
     def _on_query_changed(self, text: str) -> None:
         self._results.clear()
+        dark = is_dark_active()
         for task in self._task_service.search_tasks(text):
             item = QListWidgetItem(f"{task.title}  ·  {task.category}  ·  {task.status.value}")
+            item.setIcon(category_icon(task.category, dark))
             item.setData(1000, task.id)
             self._results.addItem(item)
 

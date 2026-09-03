@@ -6,6 +6,8 @@ business logic; purely a layout container."""
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QToolButton, QVBoxLayout, QWidget
 
+from app.ui.style import FONT_SECTION_HEADER, SPACING_MD, SPACING_SM
+
 
 class CollapsibleSection(QWidget):
     def __init__(self, title: str, parent=None, start_collapsed: bool = False):
@@ -13,20 +15,28 @@ class CollapsibleSection(QWidget):
         self._title = title
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(2)
+        outer.setContentsMargins(0, SPACING_MD, 0, 0)
+        outer.setSpacing(SPACING_SM)
 
         self._toggle = QToolButton()
-        self._toggle.setStyleSheet("QToolButton { border: none; font-weight: 600; }")
+        self._toggle.setStyleSheet(
+            f"QToolButton {{ border: none; background: transparent; padding: 2px 0px; {FONT_SECTION_HEADER} }}"
+        )
         self._toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self._toggle.setCheckable(True)
         self._toggle.setChecked(not start_collapsed)
         self._toggle.clicked.connect(self._on_toggle)
         outer.addWidget(self._toggle)
 
+        divider = QWidget()
+        divider.setFixedHeight(1)
+        divider.setStyleSheet("background: palette(mid);")
+        outer.addWidget(divider)
+
         self._body = QWidget()
         self._body_layout = QVBoxLayout(self._body)
-        self._body_layout.setContentsMargins(4, 0, 0, 0)
+        self._body_layout.setContentsMargins(0, SPACING_SM, 0, 0)
+        self._body_layout.setSpacing(SPACING_SM)
         outer.addWidget(self._body)
 
         self._body.setVisible(not start_collapsed)

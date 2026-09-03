@@ -13,6 +13,10 @@ from PySide6.QtWidgets import (
 
 from app.core.state_engine import derive_color
 from app.models.task import TaskStatus
+from app.ui.style import (
+    FONT_META, FONT_SECTION_HEADER, FONT_TITLE, PAGE_MARGIN, RADIUS_LG, SPACING_LG,
+    SPACING_MD, SPACING_SM, mark_primary, style_form,
+)
 from app.ui.task_editor import TaskEditorDialog
 from app.ui.widgets.collapsible_section import CollapsibleSection
 from app.ui.widgets.task_card import TaskCard
@@ -61,6 +65,8 @@ class _NewProjectDialog(QDialog):
         buttons.rejected.connect(self.reject)
         form.addRow(buttons)
 
+        style_form(form)
+
     def name(self) -> str:
         return self._name.text().strip()
 
@@ -87,6 +93,8 @@ class ProjectDetailDialog(QDialog):
         self.resize(480, 520)
 
         outer = QVBoxLayout(self)
+        outer.setContentsMargins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
+        outer.setSpacing(SPACING_MD)
 
         if project.due_date:
             outer.addWidget(QLabel(f"Due {project.due_date.isoformat()}"))
@@ -99,6 +107,7 @@ class ProjectDetailDialog(QDialog):
         scroll.setWidgetResizable(True)
         content = QWidget()
         self._content_layout = QVBoxLayout(content)
+        self._content_layout.setSpacing(SPACING_SM)
         scroll.setWidget(content)
         outer.addWidget(scroll)
 
@@ -112,7 +121,7 @@ class ProjectDetailDialog(QDialog):
                 "week planning and the Today view while archived."
             )
             note.setWordWrap(True)
-            note.setStyleSheet("color: palette(mid);")
+            note.setStyleSheet(FONT_META)
             outer.addWidget(note)
             self._unarchive_button = QPushButton("Restore from Archive")
             self._unarchive_button.clicked.connect(self._on_unarchive)
@@ -141,7 +150,7 @@ class ProjectDetailDialog(QDialog):
             if not tasks:
                 continue
             heading = QLabel(f"{_STATUS_HEADINGS[status]} ({len(tasks)})")
-            heading.setStyleSheet("font-weight: 600; margin-top: 6px;")
+            heading.setStyleSheet(FONT_SECTION_HEADER + " margin-top: 6px;")
             self._content_layout.addWidget(heading)
             for task in tasks:
                 expected = task.current_scheduled_date or task.due_date
@@ -184,27 +193,31 @@ class ProjectCard(QFrame):
         super().__init__(parent)
         self.setObjectName("projectCard")
         self.setStyleSheet(
-            "#projectCard { border-left: 4px solid #6a1b9a; background: palette(base); "
-            "border-radius: 4px; padding: 4px; }"
+            f"#projectCard {{ border-left: 4px solid #6a1b9a; background: palette(base); "
+            f"border-radius: {RADIUS_LG}px; }}"
         )
         self.project_id = project.id
         self._on_open = on_open
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(6)
 
         title = QLabel(project.name)
-        title.setStyleSheet("font-weight: 600;")
+        title.setStyleSheet(FONT_TITLE)
         layout.addWidget(title)
 
         bar = QProgressBar()
         bar.setRange(0, 100)
         bar.setValue(progress)
+        bar.setFixedHeight(6)
+        bar.setTextVisible(False)
         layout.addWidget(bar)
 
         meta_bits = [f"{open_count} open task(s)"]
         if project.due_date:
             meta_bits.append(f"due {project.due_date.isoformat()}")
         meta_label = QLabel(" · ".join(meta_bits))
-        meta_label.setStyleSheet("color: palette(mid);")
+        meta_label.setStyleSheet(FONT_META)
         layout.addWidget(meta_label)
 
         next_label = QLabel(
@@ -229,12 +242,16 @@ class ProjectView(QWidget):
 
         outer = QVBoxLayout(self)
         outer.setAlignment(Qt.AlignTop)
+        outer.setContentsMargins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
+        outer.setSpacing(SPACING_LG)
 
         new_project_button = QPushButton("New Project")
+        mark_primary(new_project_button)
         new_project_button.clicked.connect(self._on_new_project)
         outer.addWidget(new_project_button, alignment=Qt.AlignLeft)
 
         self._active_layout = QVBoxLayout()
+        self._active_layout.setSpacing(SPACING_MD)
         outer.addLayout(self._active_layout)
 
         self._archived_section = CollapsibleSection("Archived", start_collapsed=True)

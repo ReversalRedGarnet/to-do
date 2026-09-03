@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QPushButton, QWidget
 
 from app.core import date_service
 from app.core.quick_entry_parser import parse_quick_entry
+from app.ui.style import SPACING_SM, mark_primary
 
 
 class QuickTaskEntry(QWidget):
@@ -20,13 +21,17 @@ class QuickTaskEntry(QWidget):
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(SPACING_SM)
 
         self._input = QLineEdit()
         self._input.setPlaceholderText('What needs to happen? (or "category: due today: title")')
+        self._input.setMinimumHeight(36)
         self._input.returnPressed.connect(self._submit)
         layout.addWidget(self._input, stretch=1)
 
         add_button = QPushButton("Add Task")
+        add_button.setMinimumHeight(36)
+        mark_primary(add_button)
         add_button.clicked.connect(self._submit)
         layout.addWidget(add_button)
 

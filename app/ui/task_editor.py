@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 from app.core import date_service
 from app.core.title_parser import parse_title_hints
 from app.models.recurrence import RecurrenceFrequency
+from app.ui.style import AUTO_FILL_TINT, category_icon, is_dark_active, style_form
 
 _WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -23,7 +24,7 @@ _FREQUENCY_LABELS = {
 # Live title auto-fill (see core/title_parser.py): debounce interval and
 # the subtle marker distinguishing an inferred value from a typed one.
 _TITLE_PARSE_DEBOUNCE_MS = 400
-_AUTO_FILL_STYLE = "background-color: #eef3ff; border: 1px solid #a8c0f0;"
+_AUTO_FILL_STYLE = AUTO_FILL_TINT
 
 
 def _to_qdate(d):
@@ -57,6 +58,8 @@ class MoveToProjectDialog(QDialog):
         buttons.rejected.connect(self.reject)
         form.addRow(buttons)
 
+        style_form(form)
+
     def selected_project_id(self):
         return self._project.currentData()
 
@@ -81,7 +84,9 @@ class TaskEditorDialog(QDialog):
         form.addRow("Description", self._description)
 
         self._category = QComboBox()
-        self._category.addItems(categories)
+        dark = is_dark_active()
+        for name in categories:
+            self._category.addItem(category_icon(name, dark), name)
         if task.category in categories:
             self._category.setCurrentText(task.category)
         form.addRow("Category", self._category)
@@ -159,6 +164,8 @@ class TaskEditorDialog(QDialog):
             delete_button = buttons.addButton("Delete", QDialogButtonBox.ButtonRole.DestructiveRole)
             delete_button.clicked.connect(self._on_delete_clicked)
         form.addRow(buttons)
+
+        style_form(form)
 
     @staticmethod
     def _spin(lo, hi, value):

@@ -14,6 +14,10 @@ from app.core.date_service import week_start
 from app.core.priority_engine import calculate_priority_score
 from app.core.state_engine import derive_color
 from app.models.task import TaskStatus
+from app.ui.style import (
+    ACCENT_HEX, FONT_META, FONT_SECTION_HEADER, PAGE_MARGIN, SPACING_MD, SPACING_SM,
+    accent_rgba, is_dark_active,
+)
 from app.ui.task_editor import MoveToProjectDialog, TaskEditorDialog
 from app.ui.widgets.task_card import TaskCard
 from app.ui.widgets.task_selection_mixin import TaskSelectionMixin
@@ -59,6 +63,8 @@ class GenerateWeekPreviewDialog(QDialog):
         self.setWindowTitle("Generate Week — Preview")
         self.resize(420, 360)
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
+        layout.setSpacing(SPACING_MD)
 
         if plan.protected_task_ids:
             layout.addWidget(QLabel(
@@ -84,7 +90,7 @@ class GenerateWeekPreviewDialog(QDialog):
         note = QLabel("Applying enables a one-time Undo for the rest of this session only — "
                        "it will not be available after you close the app.")
         note.setWordWrap(True)
-        note.setStyleSheet("color: palette(mid); font-size: 11px;")
+        note.setStyleSheet(FONT_META)
         layout.addWidget(note)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Apply | QDialogButtonBox.StandardButton.Cancel)
@@ -98,6 +104,8 @@ class _DeferDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Defer to…")
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
+        layout.setSpacing(SPACING_MD)
         layout.addWidget(QLabel("Move this task to:"))
 
         self._date_edit = QDateEdit(current_date + timedelta(days=1))
@@ -141,21 +149,24 @@ class WeeklyBoard(QWidget, TaskSelectionMixin):
 
     def _build_day_column(self, day_date, header_text) -> QWidget:
         column = QVBoxLayout()
+        column.setContentsMargins(SPACING_SM, SPACING_MD, SPACING_SM, SPACING_MD)
+        column.setSpacing(SPACING_SM)
         header = QLabel(header_text)
         header.setAlignment(Qt.AlignCenter)
         is_today = day_date == date.today()
         header.setStyleSheet(
-            "font-weight: 700; color: #1565c0;" if is_today else "font-weight: 600;"
+            f"font-weight: 700; color: {ACCENT_HEX};" if is_today else FONT_SECTION_HEADER
         )
         column.addWidget(header)
 
         load_label = QLabel("")
         load_label.setAlignment(Qt.AlignCenter)
-        load_label.setStyleSheet("color: palette(mid); font-size: 11px;")
+        load_label.setStyleSheet(FONT_META)
         column.addWidget(load_label)
         self._load_labels[day_date] = load_label
 
         cards_container = QVBoxLayout()
+        cards_container.setSpacing(SPACING_SM)
         cards_container.addStretch()
         column.addLayout(cards_container)
         column.addStretch()
@@ -163,18 +174,23 @@ class WeeklyBoard(QWidget, TaskSelectionMixin):
 
         column_widget = _DropColumn(on_drop=lambda task_id, d=day_date: self._on_drop(task_id, d))
         column_widget.setLayout(column)
-        column_widget.setMinimumWidth(220)
+        column_widget.setMinimumWidth(260)
+        column_widget.setMaximumWidth(320)
         if is_today:
-            column_widget.setStyleSheet("background: rgba(21, 101, 192, 0.06);")
+            tint = accent_rgba(22 if is_dark_active() else 12)
+            column_widget.setStyleSheet(f"background: {tint};")
         return column_widget
 
     def _build_layout(self) -> None:
         outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         row = QWidget()
         row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, PAGE_MARGIN, 0)
+        row_layout.setSpacing(SPACING_SM)
 
         for i, name in enumerate(_DAY_NAMES):
             day_date = self._week_start + timedelta(days=i)
@@ -183,12 +199,15 @@ class WeeklyBoard(QWidget, TaskSelectionMixin):
             row_layout.addWidget(column_widget)
 
         unscheduled_column = QVBoxLayout()
+        unscheduled_column.setContentsMargins(SPACING_SM, SPACING_MD, SPACING_SM, SPACING_MD)
+        unscheduled_column.setSpacing(SPACING_SM)
         header = QLabel("Unscheduled\n(drop here to clear)")
         header.setAlignment(Qt.AlignCenter)
-        header.setStyleSheet("font-weight: 600; color: palette(mid);")
+        header.setStyleSheet(FONT_SECTION_HEADER)
         unscheduled_column.addWidget(header)
 
         cards_container = QVBoxLayout()
+        cards_container.setSpacing(SPACING_SM)
         cards_container.addStretch()
         unscheduled_column.addLayout(cards_container)
         unscheduled_column.addStretch()
@@ -196,8 +215,15 @@ class WeeklyBoard(QWidget, TaskSelectionMixin):
 
         unscheduled_widget = _DropColumn(on_drop=self._on_unschedule)
         unscheduled_widget.setLayout(unscheduled_column)
-        unscheduled_widget.setMinimumWidth(220)
+        unscheduled_widget.setMinimumWidth(260)
+        unscheduled_widget.setMaximumWidth(320)
         row_layout.addWidget(unscheduled_widget)
+        # Absorb any extra viewport width here instead of letting the day
+        # columns themselves stretch apart on a wide/maximized window —
+        # each column now also has a setMaximumWidth cap above, since a
+        # word-wrapped QLabel's sizeHint (the card's metadata line) can
+        # otherwise still pull a column wider than intended.
+        row_layout.addStretch()
 
         scroll.setWidget(row)
         outer.addWidget(scroll)
@@ -334,11 +360,11 @@ class WeeklyBoard(QWidget, TaskSelectionMixin):
         capacity = self._schedule_service.capacity_for_day(day_date)
         target = capacity.value * UTILIZATION_TARGET
         if used > capacity.value:
-            style = "color: #c62828; font-size: 11px;"
+            style = "color: #c62828; font-size: 11px; font-weight: 600;"
         elif used > target:
-            style = "color: #ef6c00; font-size: 11px;"
+            style = "color: #ef6c00; font-size: 11px; font-weight: 600;"
         else:
-            style = "color: palette(mid); font-size: 11px;"
+            style = FONT_META
         label.setStyleSheet(style)
         label.setText(f"{used:g}/{capacity.value} load")
 

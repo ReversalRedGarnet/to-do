@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 from app.core.priority_engine import calculate_priority_score, priority_label
 from app.core.state_engine import Color
 from app.models.task import TaskStatus
+from app.ui.style import ACCENT_HEX, FONT_META, FONT_TITLE, RADIUS_LG, is_dark_active, make_category_dot
 
 _ACTIONABLE_STATUSES = (TaskStatus.PENDING, TaskStatus.SCHEDULED, TaskStatus.DEFERRED)
 
@@ -25,7 +26,7 @@ _COLOR_HEX = {
     None: "#9e9e9e",
 }
 
-_SELECTION_OUTLINE = "#3c6ec8"
+_SELECTION_OUTLINE = ACCENT_HEX
 
 _STATUS_LABELS = {
     TaskStatus.PENDING: "Unscheduled",
@@ -65,11 +66,12 @@ class TaskCard(QFrame):
         self._apply_style()
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(8, 6, 8, 6)
+        outer.setContentsMargins(14, 12, 14, 12)
+        outer.setSpacing(6)
 
         title = QLabel(task.title)
         title.setWordWrap(True)
-        title.setStyleSheet("font-weight: 600;")
+        title.setStyleSheet(FONT_TITLE)
         outer.addWidget(title)
 
         meta_bits = [task.category]
@@ -84,12 +86,19 @@ class TaskCard(QFrame):
             meta_bits.append(project_name)
         if self._show_lock and self._locked:
             meta_bits.append("🔒 Locked")
+
+        meta_row = QHBoxLayout()
+        meta_row.setContentsMargins(0, 0, 0, 0)
+        meta_row.setSpacing(6)
+        meta_row.addWidget(make_category_dot(task.category, is_dark_active()))
         meta_label = QLabel(" · ".join(meta_bits))
         meta_label.setWordWrap(True)
-        meta_label.setStyleSheet("color: palette(mid);")
-        outer.addWidget(meta_label)
+        meta_label.setStyleSheet(FONT_META)
+        meta_row.addWidget(meta_label, stretch=1)
+        outer.addLayout(meta_row)
 
         button_row = QHBoxLayout()
+        button_row.setSpacing(8)
         if task.task_type.value != "fixed_event" and task.status in _ACTIONABLE_STATUSES:
             complete_box = QCheckBox("Done")
             complete_box.setChecked(False)
@@ -114,7 +123,7 @@ class TaskCard(QFrame):
             f"#taskCard {{ border-left: 4px solid {self._hex_color}; "
             f"border-top: {selection_border}; border-right: {selection_border}; "
             f"border-bottom: {selection_border}; "
-            "background: palette(base); border-radius: 4px; }"
+            f"background: palette(base); border-radius: {RADIUS_LG}px; }}"
         )
 
     def set_selected(self, selected: bool) -> None:

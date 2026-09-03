@@ -11,6 +11,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication
 
+from app.ui.style import build_stylesheet, is_dark_active
+
 
 def _dark_palette() -> QPalette:
     palette = QPalette()
@@ -80,7 +82,12 @@ def apply_theme(app: QApplication, preference: str = "system") -> None:
     "system" (default — OS-driven via `apply_system_theme`), "light", or
     "dark" (explicit override). Called at startup (main.py, after reading
     the stored setting) and live from Settings' save handler, so a running
-    app reflects a change immediately without a restart."""
+    app reflects a change immediately without a restart.
+
+    Also (re-)applies the app-wide QSS chrome layer (ui/style.py) on top
+    of whichever palette this resolves to — a single stylesheet built
+    from the *resulting* palette's actual lightness, not duplicated
+    light/dark detection logic, so it always matches what's on screen."""
     if preference == "dark":
         app.setStyle("Fusion")
         app.setPalette(_dark_palette())
@@ -90,3 +97,5 @@ def apply_theme(app: QApplication, preference: str = "system") -> None:
     else:
         app.setPalette(app.style().standardPalette())
         apply_system_theme(app)
+
+    app.setStyleSheet(build_stylesheet(is_dark_active(app)))

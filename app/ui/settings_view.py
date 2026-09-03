@@ -2,6 +2,7 @@
 (Phase 6): Notifications, Planning, Week generation, Data, Appearance.
 Calls into app.services.settings_service only."""
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFormLayout, QGroupBox, QLabel, QPushButton,
     QVBoxLayout, QWidget,
@@ -9,6 +10,7 @@ from PySide6.QtWidgets import (
 
 from app.config.settings import Capacity
 from app.database.db import default_db_path
+from app.ui.style import FONT_META, PAGE_MARGIN, SPACING_MD, SPACING_SM, mark_primary
 from app.ui.theme import apply_theme
 
 _DAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -33,6 +35,8 @@ class SettingsView(QWidget):
         self._app = app
 
         outer = QVBoxLayout(self)
+        outer.setContentsMargins(PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN, PAGE_MARGIN)
+        outer.setSpacing(SPACING_MD)
 
         outer.addWidget(self._build_notifications_group())
         outer.addWidget(self._build_planning_group())
@@ -44,8 +48,9 @@ class SettingsView(QWidget):
         outer.addWidget(self._status_label)
 
         save_button = QPushButton("Save")
+        mark_primary(save_button)
         save_button.clicked.connect(self._save)
-        outer.addWidget(save_button)
+        outer.addWidget(save_button, alignment=Qt.AlignmentFlag.AlignLeft)
 
         outer.addStretch()
 
@@ -54,6 +59,7 @@ class SettingsView(QWidget):
     def _build_notifications_group(self) -> QGroupBox:
         group = QGroupBox("Notifications")
         layout = QVBoxLayout(group)
+        layout.setSpacing(SPACING_SM)
         self._notifications_enabled = QCheckBox("Enable notifications")
         layout.addWidget(self._notifications_enabled)
         self._sunday_reminder_enabled = QCheckBox(
@@ -65,8 +71,11 @@ class SettingsView(QWidget):
     def _build_planning_group(self) -> QGroupBox:
         group = QGroupBox("Planning")
         layout = QVBoxLayout(group)
+        layout.setSpacing(SPACING_SM)
         layout.addWidget(QLabel("Daily capacity"))
         capacity_form = QFormLayout()
+        capacity_form.setVerticalSpacing(SPACING_SM)
+        capacity_form.setHorizontalSpacing(SPACING_MD)
         self._capacity_boxes = []
         for label in _DAY_LABELS:
             box = QComboBox()
@@ -79,8 +88,11 @@ class SettingsView(QWidget):
     def _build_week_generation_group(self) -> QGroupBox:
         group = QGroupBox("Week generation")
         layout = QVBoxLayout(group)
+        layout.setSpacing(SPACING_SM)
 
         form = QFormLayout()
+        form.setVerticalSpacing(SPACING_SM)
+        form.setHorizontalSpacing(SPACING_MD)
         self._aggressiveness = QComboBox()
         for value, label in _AGGRESSIVENESS_OPTIONS:
             self._aggressiveness.addItem(label, value)
@@ -99,6 +111,7 @@ class SettingsView(QWidget):
     def _build_data_group(self) -> QGroupBox:
         group = QGroupBox("Data")
         layout = QVBoxLayout(group)
+        layout.setSpacing(SPACING_SM)
         path_label = QLabel(f"Database file: {default_db_path()}")
         path_label.setWordWrap(True)
         layout.addWidget(path_label)
@@ -108,7 +121,7 @@ class SettingsView(QWidget):
             "session — it is not saved, and is lost when the app is closed."
         )
         undo_note.setWordWrap(True)
-        undo_note.setStyleSheet("color: palette(mid); font-size: 11px;")
+        undo_note.setStyleSheet(FONT_META)
         layout.addWidget(undo_note)
         return group
 
@@ -116,6 +129,8 @@ class SettingsView(QWidget):
         group = QGroupBox("Appearance")
         layout = QVBoxLayout(group)
         form = QFormLayout()
+        form.setVerticalSpacing(SPACING_SM)
+        form.setHorizontalSpacing(SPACING_MD)
         self._theme = QComboBox()
         for value, label in _THEME_OPTIONS:
             self._theme.addItem(label, value)

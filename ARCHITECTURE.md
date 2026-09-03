@@ -16,6 +16,8 @@ app/
 │   ├── scheduling_engine.py
 │   ├── state_engine.py      color derivation + rollover reconciliation
 │   ├── recurrence_engine.py
+│   ├── title_parser.py      task-editor title auto-fill hints
+│   ├── quick_entry_parser.py  quick-add shorthand ("category: due <when>: title")
 │   └── date_service.py
 ├── notifications/           NotificationService abstraction (OS isolated here)
 ├── ui/                      PySide6 widgets — no business logic
@@ -56,12 +58,44 @@ The vertical slice works end to end. On startup (`app/main.py`):
 6. Complete/Defer/Edit on a card call `TaskService` (task-level fields)
    and, for Defer/Move, `ScheduleService.move_task` (the persisted
    `task_schedule` row) together — see `ui/weekly_board.py`.
+7. `QuickTaskEntry` (`ui/task_entry.py`) also accepts a colon-delimited
+   shorthand, `"<category>: due <when>: <title>"` (e.g. `"work: due
+   today: submit form"`), parsed by the pure `core/quick_entry_parser.py`
+   before the same `TaskService.create_task` call — a plain-text title
+   with no colons is always still accepted. Any due date this produces
+   (or any due date entered anywhere else, including the task editor)
+   that lands in the past is clamped forward to today by
+   `core.date_service.normalize_due_date`, applied once inside
+   `TaskService.create_task`/`update_task` so no entry point can bypass
+   it.
+8. Opening the app, and switching the sidebar to This Week, calls
+   `WeeklyBoard.scroll_to_first_active_day()` (`ui/weekly_board.py`) —
+   a pure scroll-position adjustment, never touching what's scheduled: if
+   today has no scheduled tasks but a later day this week does, the view
+   jumps to that day.
 
 ## Database
 
 See `database/schema.py` for DDL. Minimum tables: tasks, projects,
 task_schedule, fixed_events, recurrence_rules, weekly_history, categories,
-settings, app_state.
+settings, app_state, schema_version. `categories` is seeded from
+`config.settings.DEFAULT_CATEGORIES` — fixed at Family, Personal, Work,
+School, Health. A task carries only a `due_date`; there is no
+"available from"/start-date concept.
+
+`database/db.py` runs two independent migration mechanisms against every
+real `%APPDATA%` database on every startup, in addition to fixture/test
+databases going through the same `initialize_database()` entry point:
+- `_MIGRATIONS` — additive-only `ALTER TABLE ... ADD COLUMN`, gated
+  simply on whether the column already exists (no version tracking
+  needed, since that check is itself idempotent).
+- `_VERSIONED_MIGRATIONS` — for changes a plain `ADD COLUMN` can't
+  express (e.g. dropping a column), gated on the singleton
+  `schema_version` row: build a new table matching the current schema,
+  copy the surviving columns' data across inside one transaction, drop
+  the old table, rename the new one into place, then bump the recorded
+  version. `_drop_tasks_available_from_column` (version 1) is the first
+  and so far only entry.
 
 Color is never stored as authoritative state — it's derived at read time
 by `core/state_engine.py`.

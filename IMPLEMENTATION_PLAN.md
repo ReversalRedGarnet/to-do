@@ -364,6 +364,77 @@ here so future work doesn't have to rediscover them from scratch:
 
 ---
 
+## Post-v1 follow-up — Available From removal, fixed categories, quick-entry shorthand, week auto-scroll
+
+- [x] **Removed "Available From" entirely.** Dropped the `available_from`
+      column/CHECK constraint (`database/schema.py`), the `Task` model
+      field, all repository/service/UI plumbing, and the scheduling
+      engine's lower-bound window check — a task is now only bounded
+      above by its `due_date` (see ALGORITHM.md). `RecurrenceService.
+      ensure_next_occurrence`'s anchor now falls back to the completed
+      task's `completed_at` instead of `available_from` when there's no
+      due date.
+- [x] **Follow-up: migrated the column out of existing databases.**
+      The first pass above left a pre-existing `%APPDATA%` install's old
+      `available_from` column and CHECK constraint in place on disk
+      (harmless but unused). Closed the gap with a proper migration:
+      added a `schema_version` singleton table (`database/schema.py`)
+      and a new `_VERSIONED_MIGRATIONS` mechanism in `database/db.py`,
+      distinct from the existing additive `_MIGRATIONS` list (which only
+      ever adds a column and doesn't need version tracking). The version-1
+      migration, `_drop_tasks_available_from_column`, rebuilds `tasks`
+      via the standard SQLite-safe pattern — new table without the
+      column, copy remaining columns' data across inside one transaction
+      (FK enforcement briefly OFF around the swap, with a
+      `PRAGMA foreign_key_check` before committing), drop the old table,
+      rename the new one into place, recreate its indexes — and is a
+      no-op when the column is already gone (every fresh install
+      included). Runs automatically inside `initialize_database()`, so
+      it applies to the real `%APPDATA%/TaskPlanner/` database and every
+      test/fixture database alike. Verified empirically against a
+      hand-built old-shaped throwaway DB (five real task rows plus a
+      `task_schedule` FK row) — column gone, all data and the FK
+      relationship intact — in addition to the automated tests below.
+- [x] **Restricted default categories to exactly five**: Family,
+      Personal, Work, School, Health (`config/settings.DEFAULT_CATEGORIES`,
+      seeded by `database/db.py`). No other built-in categories remain;
+      category selection UI was already fully data-driven off
+      `CategoryRepository.list_all()`, so no UI code needed to change.
+- [x] **Quick-entry shorthand**: `QuickTaskEntry` (`ui/task_entry.py`)
+      now also parses `"<category>: due <when>: <title>"` (today/
+      tomorrow/yesterday) via the new pure `core/quick_entry_parser.py`,
+      falling back to treating the whole input as a plain title on any
+      mismatch (unrecognized category, missing/malformed due clause,
+      unrecognized `<when>`) — never raises.
+- [x] **Past due dates are normalized to today**, not just for the
+      shorthand: `core.date_service.normalize_due_date` is applied once
+      inside `TaskService.create_task`/`update_task`, so every entry
+      point (quick entry, shorthand, task editor) gets it for free. A
+      task normalized to due-today lands in `state_engine.derive_color`'s
+      existing YELLOW ("required attention today") bucket, confirmed by
+      test rather than assumed — it is not RED.
+- [x] **Week view auto-scroll**: `WeeklyBoard.scroll_to_first_active_day()`
+      runs once at construction (app startup) and each time the sidebar
+      switches to This Week (`ui/main_window.py`) — if today has no
+      scheduled tasks but a later day this week does, the view scrolls to
+      that day; otherwise the scroll position is left untouched. Pure
+      scroll-position behavior — the Monday-Sunday window `generate_week`
+      computes/persists is unchanged.
+- [x] Tests: `test_quick_entry_parser.py`, `test_date_service.py`,
+      `test_task_service.py`, `test_week_autoscroll.py` (new), plus
+      `available_from` removed from every existing test's task fixtures
+      and the now-obsolete `available_from`-specific tests deleted
+      (`test_scheduling.py`'s before-available_from case,
+      `test_database.py`'s CHECK-constraint case). The migration
+      follow-up added `test_database.py::test_migration_drops_
+      available_from_column_and_preserves_data` (hand-built old-shaped DB
+      with real FK data, confirms the column is gone and everything else
+      — including the `task_schedule` FK row — survives, plus that
+      re-running `initialize_database` afterward is still a no-op) and
+      `test_migration_is_a_no_op_on_a_fresh_database`.
+
+---
+
 Progress is tracked by checking boxes above as each piece lands and tests
 pass. See `ARCHITECTURE.md` for module boundaries, `ALGORITHM.md` for the
 scoring/scheduling/color rules, `DEVELOPMENT.md` for environment/test/

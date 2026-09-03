@@ -25,7 +25,6 @@ def make_task(task_id, **overrides):
         urgency=3,
         seriousness=3,
         effort=1,
-        available_from=None,
         due_date=None,
         status=TaskStatus.SCHEDULED,
     )

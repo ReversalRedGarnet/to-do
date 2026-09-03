@@ -95,12 +95,6 @@ class TaskEditorDialog(QDialog):
         self._effort = self._spin(1, 5, task.effort)
         form.addRow("Effort", self._effort)
 
-        self._available_from_enabled = QCheckBox("Set")
-        self._available_from_enabled.setChecked(task.available_from is not None)
-        self._available_from = QDateEdit(_to_qdate(task.available_from) or QDate.currentDate())
-        self._available_from.setCalendarPopup(True)
-        form.addRow("Available from", self._paired(self._available_from, self._available_from_enabled))
-
         self._due_date_enabled = QCheckBox("Set")
         self._due_date_enabled.setChecked(task.due_date is not None)
         self._due_date = QDateEdit(_to_qdate(task.due_date) or QDate.currentDate())
@@ -270,7 +264,6 @@ class TaskEditorDialog(QDialog):
             urgency=self._urgency.value(),
             seriousness=self._seriousness.value(),
             effort=self._effort.value(),
-            available_from=_from_qdate(self._available_from.date()) if self._available_from_enabled.isChecked() else None,
             due_date=_from_qdate(self._due_date.date()) if self._due_date_enabled.isChecked() else None,
         )
         if self._project is not None:

@@ -53,7 +53,7 @@ def make_task(task_repo, **overrides):
     defaults = dict(
         id=None, title="Weekly groceries", description="", task_type=TaskType.NORMAL,
         project_id=None, category="Personal", importance=2, urgency=2, seriousness=2,
-        effort=1, available_from=TODAY, due_date=None,
+        effort=1, due_date=None,
         status=TaskStatus.PENDING, created_at=TODAY,
     )
     defaults.update(overrides)

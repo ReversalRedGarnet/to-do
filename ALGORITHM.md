@@ -36,9 +36,9 @@ else: clamp(5 * (1 - days_remaining / 14), 0, 5)
 
 1. Sort eligible tasks by priority score, descending.
 2. Walk days Monday → Sunday; walk tasks in sorted order.
-3. Place each task on the earliest day within
-   `[available_from, due_date]` with remaining capacity under the
-   utilization target.
+3. Place each task on the earliest day on/before its `due_date` (tasks
+   with no due date are eligible on any day) with remaining capacity
+   under the utilization target.
 4. If no day in-window has room, place on the day with the most slack
    in-window anyway and flag `OVERCOMMITTED`.
 
@@ -104,6 +104,17 @@ Recurring definitions persist indefinitely; occurrences do not
 (spec §44). `services/recurrence_service.ensure_next_occurrence`, called
 from `TaskService.complete_task` when the completed task has a
 `recurrence_rule_id`, never mutates the just-completed task — it only
-ever `create()`s a brand-new Task row for the next occurrence, shifted by
-the same delta as the rule's next-anchor calculation so the
-available_from/due_date window shape is preserved.
+ever `create()`s a brand-new Task row for the next occurrence, with
+`due_date` (if any) shifted by the same delta as the rule's next-anchor
+calculation. A recurring task with no due date anchors instead on its own
+`completed_at`, purely to compute the next occurrence's date for the
+following recurrence — there is no other field left to shift.
+
+## Due-date normalization
+
+`core/date_service.normalize_due_date(due_date, as_of=None)` clamps a
+past due date forward to today (default `as_of`) — a due date is never
+allowed to sit in the past. `services/task_service.TaskService` applies
+this on every task-creation and task-update path (`create_task`,
+`update_task`), not just quick-entry shorthand, so it can never be
+bypassed by adding another entry point later.

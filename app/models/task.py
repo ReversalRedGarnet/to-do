@@ -35,7 +35,6 @@ class Task:
     seriousness: int  # 1-5
     effort: int       # 1-5
 
-    available_from: Optional[date]
     due_date: Optional[date]
 
     status: TaskStatus

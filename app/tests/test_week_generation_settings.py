@@ -55,7 +55,7 @@ def make_task(wiring, **overrides):
     defaults = dict(
         id=None, title="Task", description="", task_type=TaskType.NORMAL,
         project_id=None, category="Personal", importance=3, urgency=3,
-        seriousness=3, effort=2, available_from=MONDAY, due_date=DAYS[6],
+        seriousness=3, effort=2, due_date=DAYS[6],
         status=TaskStatus.PENDING, created_at=MONDAY,
     )
     defaults.update(overrides)
@@ -76,8 +76,8 @@ def test_settings_weekend_disallowed_keeps_preview_off_the_weekend(wiring):
 def _two_cost2_monday_only_tasks(wiring):
     # Monday MEDIUM=6; standard target 0.75 -> budget 4.5 (both cost-2 tasks
     # fit: 2+2=4); relaxed target 0.60 -> budget 3.6 (only the first fits).
-    make_task(wiring, id=None, effort=2, available_from=MONDAY, due_date=MONDAY, importance=5, urgency=5)
-    make_task(wiring, id=None, effort=2, available_from=MONDAY, due_date=MONDAY, importance=4, urgency=4)
+    make_task(wiring, id=None, effort=2, due_date=MONDAY, importance=5, urgency=5)
+    make_task(wiring, id=None, effort=2, due_date=MONDAY, importance=4, urgency=4)
 
 
 def test_settings_aggressiveness_relaxed_lowers_effective_target(wiring):

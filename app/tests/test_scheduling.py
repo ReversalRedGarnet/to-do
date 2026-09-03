@@ -29,7 +29,6 @@ def make_task(**overrides):
         urgency=3,
         seriousness=3,
         effort=1,
-        available_from=None,
         due_date=None,
         status=TaskStatus.PENDING,
     )
@@ -41,17 +40,9 @@ def flatten(schedule):
     return [p for placements in schedule.values() for p in placements]
 
 
-# - tasks cannot be scheduled before available_from
-def test_task_not_scheduled_before_available_from():
-    task = make_task(id=1, available_from=DAYS[3], due_date=None)
-    schedule = generate_weekly_schedule([task], [], MONDAY, DEFAULT_WEEKLY_CAPACITY)
-    placement = next(p for p in flatten(schedule) if p.task_id == 1)
-    assert placement.date >= DAYS[3]
-
-
 # - tasks cannot be scheduled after due_date
 def test_task_not_scheduled_after_due_date():
-    task = make_task(id=1, available_from=None, due_date=DAYS[1])
+    task = make_task(id=1, due_date=DAYS[1])
     schedule = generate_weekly_schedule([task], [], MONDAY, DEFAULT_WEEKLY_CAPACITY)
     placement = next(p for p in flatten(schedule) if p.task_id == 1)
     assert placement.date <= DAYS[1]
@@ -81,7 +72,7 @@ def test_fixed_event_consumes_capacity_leaving_less_room_for_tasks():
 # - tasks distribute across days
 def test_tasks_distribute_across_days():
     tasks = [
-        make_task(id=i, effort=2, available_from=MONDAY, due_date=DAYS[6])
+        make_task(id=i, effort=2, due_date=DAYS[6])
         for i in range(1, 8)
     ]
     schedule = generate_weekly_schedule(tasks, [], MONDAY, DEFAULT_WEEKLY_CAPACITY)
@@ -92,7 +83,7 @@ def test_tasks_distribute_across_days():
 # - scheduler preserves slack (does not exceed UTILIZATION_TARGET)
 def test_scheduler_preserves_slack_under_capacity():
     tasks = [
-        make_task(id=i, effort=1, available_from=MONDAY, due_date=DAYS[6])
+        make_task(id=i, effort=1, due_date=DAYS[6])
         for i in range(1, 6)  # well under total weekly capacity
     ]
     schedule = generate_weekly_schedule(tasks, [], MONDAY, DEFAULT_WEEKLY_CAPACITY)
@@ -118,11 +109,11 @@ def test_oversized_task_still_placed_and_flagged_overcommitted():
 def test_low_priority_work_does_not_crowd_out_critical_task():
     critical = make_task(
         id=1, importance=5, urgency=5, seriousness=5, effort=1,
-        available_from=MONDAY, due_date=MONDAY,
+        due_date=MONDAY,
     )
     low_priority_tasks = [
         make_task(id=i, importance=1, urgency=1, seriousness=1, effort=1,
-                   available_from=MONDAY, due_date=DAYS[4])
+                   due_date=DAYS[4])
         for i in range(2, 7)
     ]
     schedule = generate_weekly_schedule(
@@ -139,7 +130,7 @@ def test_locked_placement_keeps_its_date_and_is_excluded_from_the_pool():
     # Note: locked_task is NOT included in `tasks` — ScheduleService is
     # responsible for that exclusion; the core engine just needs to honor
     # the pre-placed date and consume capacity for it.
-    other_tasks = [make_task(id=i, effort=1, available_from=MONDAY, due_date=DAYS[6]) for i in range(2, 5)]
+    other_tasks = [make_task(id=i, effort=1, due_date=DAYS[6]) for i in range(2, 5)]
 
     schedule = generate_weekly_schedule(
         other_tasks, [], MONDAY, DEFAULT_WEEKLY_CAPACITY,
@@ -155,7 +146,7 @@ def test_locked_placement_consumes_capacity_leaving_less_room_for_others():
     locked_task = make_task(id=1, effort=5)  # cost 8
     # Wide window so the allocator has somewhere else to go instead of
     # being forced onto Monday and merely flagged overcommitted.
-    competitor = make_task(id=2, effort=2, available_from=MONDAY, due_date=DAYS[6])
+    competitor = make_task(id=2, effort=2, due_date=DAYS[6])
 
     schedule = generate_weekly_schedule(
         [competitor], [], MONDAY, DEFAULT_WEEKLY_CAPACITY,
@@ -168,7 +159,7 @@ def test_locked_placement_consumes_capacity_leaving_less_room_for_others():
 
 def test_weekend_disallowed_keeps_new_work_off_saturday_and_sunday():
     tasks = [
-        make_task(id=i, effort=2, available_from=MONDAY, due_date=DAYS[6])
+        make_task(id=i, effort=2, due_date=DAYS[6])
         for i in range(1, 8)  # more work than Mon-Fri MEDIUM capacity comfortably holds
     ]
     schedule = generate_weekly_schedule(
@@ -180,7 +171,7 @@ def test_weekend_disallowed_keeps_new_work_off_saturday_and_sunday():
 
 
 def test_custom_utilization_target_is_honored():
-    tasks = [make_task(id=i, effort=1, available_from=MONDAY, due_date=DAYS[0]) for i in range(1, 4)]
+    tasks = [make_task(id=i, effort=1, due_date=DAYS[0]) for i in range(1, 4)]
     schedule = generate_weekly_schedule(
         tasks, [], MONDAY, DEFAULT_WEEKLY_CAPACITY, utilization_target=0.1,
     )
@@ -192,7 +183,7 @@ def test_custom_utilization_target_is_honored():
 # - audit fix #3: elapsed days of the current week are never eligible for new work
 def test_today_excludes_already_elapsed_days_from_new_placements():
     thursday = DAYS[3]
-    tasks = [make_task(id=i, available_from=None, due_date=None) for i in range(1, 4)]
+    tasks = [make_task(id=i, due_date=None) for i in range(1, 4)]
 
     schedule = generate_weekly_schedule(tasks, [], MONDAY, DEFAULT_WEEKLY_CAPACITY, today=thursday)
 
@@ -221,7 +212,7 @@ def test_today_leaves_locked_placements_and_fixed_events_on_elapsed_days_untouch
 
 
 def test_today_in_a_future_week_excludes_nothing():
-    task = make_task(id=1, available_from=None, due_date=None)
+    task = make_task(id=1, due_date=None)
     far_future_today = MONDAY - timedelta(days=30)  # this MONDAY hasn't happened yet
 
     schedule = generate_weekly_schedule([task], [], MONDAY, DEFAULT_WEEKLY_CAPACITY, today=far_future_today)
@@ -233,7 +224,7 @@ def test_today_in_a_future_week_excludes_nothing():
 def test_today_defaults_to_none_and_preserves_prior_behavior():
     """Existing 4-positional-arg callers (no `today`) must see no
     change — a task due earlier in the week is still placeable there."""
-    task = make_task(id=1, available_from=None, due_date=DAYS[1])
+    task = make_task(id=1, due_date=DAYS[1])
     schedule = generate_weekly_schedule([task], [], MONDAY, DEFAULT_WEEKLY_CAPACITY)
     placement = next(p for p in flatten(schedule) if p.task_id == 1)
     assert placement.date in (MONDAY, DAYS[1])

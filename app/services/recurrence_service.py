@@ -58,14 +58,11 @@ class RecurrenceService:
         if rule is None:
             return None
 
-        anchor = completed_task.due_date or completed_task.available_from or date_service.today()
+        anchor = completed_task.due_date or completed_task.completed_at or date_service.today()
         next_anchor = generate_next_occurrence(rule, anchor)
         shift = next_anchor - anchor
 
         new_due = completed_task.due_date + shift if completed_task.due_date else None
-        new_available = (
-            completed_task.available_from + shift if completed_task.available_from else next_anchor
-        )
 
         today = date_service.today()
         new_task = Task(
@@ -79,7 +76,6 @@ class RecurrenceService:
             urgency=completed_task.urgency,
             seriousness=completed_task.seriousness,
             effort=completed_task.effort,
-            available_from=new_available,
             due_date=new_due,
             status=TaskStatus.PENDING,
             created_at=today,

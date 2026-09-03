@@ -61,14 +61,11 @@ PRIORITY_WEIGHTS = {
 }
 
 DEFAULT_CATEGORIES = [
-    "School",
-    "Work",
     "Family",
     "Personal",
-    "Hobby",
+    "Work",
+    "School",
     "Health",
-    "Finance",
-    "Other",
 ]
 
 # Sensible defaults applied during quick task entry (Sunday planning flow).

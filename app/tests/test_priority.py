@@ -24,7 +24,6 @@ def make_task(**overrides):
         urgency=3,
         seriousness=3,
         effort=2,
-        available_from=None,
         due_date=None,
         status=TaskStatus.PENDING,
     )

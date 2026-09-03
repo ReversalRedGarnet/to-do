@@ -132,9 +132,12 @@ class WeeklyBoard(QWidget, TaskSelectionMixin):
         self._last_deleted = None
 
         self._columns = {}
+        self._column_widgets = {}
         self._load_labels = {}
+        self._scroll_area = None
         self._build_layout()
         self.refresh()
+        self.scroll_to_first_active_day()
 
     def _build_day_column(self, day_date, header_text) -> QWidget:
         column = QVBoxLayout()
@@ -175,7 +178,9 @@ class WeeklyBoard(QWidget, TaskSelectionMixin):
 
         for i, name in enumerate(_DAY_NAMES):
             day_date = self._week_start + timedelta(days=i)
-            row_layout.addWidget(self._build_day_column(day_date, f"{name}\n{day_date.isoformat()}"))
+            column_widget = self._build_day_column(day_date, f"{name}\n{day_date.isoformat()}")
+            self._column_widgets[day_date] = column_widget
+            row_layout.addWidget(column_widget)
 
         unscheduled_column = QVBoxLayout()
         header = QLabel("Unscheduled\n(drop here to clear)")
@@ -196,10 +201,45 @@ class WeeklyBoard(QWidget, TaskSelectionMixin):
 
         scroll.setWidget(row)
         outer.addWidget(scroll)
+        self._scroll_area = scroll
 
     def set_week(self, new_week_start: date) -> None:
         self._week_start = new_week_start
         self.refresh()
+
+    def scroll_to_first_active_day(self) -> None:
+        """Called once at construction (app startup) and each time the
+        This Week view becomes the active sidebar tab (see
+        ui/main_window.py) — deliberately NOT part of `refresh()`, so it
+        never fights a manual scroll made while working within the view.
+        Purely a scroll-position change: it never touches what
+        `generate_week` schedules or persists.
+
+        If today already has (non-cancelled) scheduled tasks, or no day
+        this week does, the scroll position is left exactly as it is."""
+        if self._scroll_area is None:
+            return
+        today = date.today()
+        week_dates = [self._week_start + timedelta(days=i) for i in range(7)]
+        if today not in week_dates:
+            return
+
+        schedule = self._schedule_service.get_week(self._week_start)
+        for day_date in week_dates[week_dates.index(today):]:
+            if not self._day_has_active_tasks(schedule.get(day_date, [])):
+                continue
+            if day_date != today:
+                widget = self._column_widgets.get(day_date)
+                if widget is not None:
+                    self._scroll_area.ensureWidgetVisible(widget)
+            return
+
+    def _day_has_active_tasks(self, entries) -> bool:
+        for entry in entries:
+            task = self._task_service.get_task(entry.task_id)
+            if task is not None and task.status != TaskStatus.CANCELLED:
+                return True
+        return False
 
     def run_generate_week(self) -> None:
         """Preview-then-apply flow for the "Generate Week" button (spec:

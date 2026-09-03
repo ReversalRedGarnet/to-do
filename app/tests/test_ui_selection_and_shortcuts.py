@@ -68,7 +68,7 @@ def make_scheduled_task(wiring, **overrides):
     defaults = dict(
         id=None, title="Task", description="", task_type=TaskType.NORMAL,
         project_id=None, category="Personal", importance=3, urgency=3,
-        seriousness=3, effort=1, available_from=TODAY, due_date=None,
+        seriousness=3, effort=1, due_date=None,
         status=TaskStatus.SCHEDULED, created_at=TODAY,
     )
     defaults.update(overrides)
@@ -85,7 +85,7 @@ def make_scheduled_task(wiring, **overrides):
 def test_taskcard_set_selected_changes_style():
     task = Task(id=1, title="X", description="", task_type=TaskType.NORMAL,
                 project_id=None, category="Personal", importance=3, urgency=3,
-                seriousness=3, effort=1, available_from=None, due_date=None,
+                seriousness=3, effort=1, due_date=None,
                 status=TaskStatus.PENDING)
     card = TaskCard(task, None)
     unselected_style = card.styleSheet()
@@ -195,8 +195,7 @@ def test_overdue_task_lands_in_overdue_section_not_today(wiring):
     task_id = wiring["task_repo"].create(Task(
         id=None, title="Stale", description="", task_type=TaskType.NORMAL,
         project_id=None, category="Personal", importance=3, urgency=3,
-        seriousness=3, effort=1, available_from=TODAY - timedelta(days=5),
-        due_date=TODAY - timedelta(days=1), status=TaskStatus.PENDING, created_at=TODAY,
+        seriousness=3, effort=1, due_date=TODAY - timedelta(days=1), status=TaskStatus.PENDING, created_at=TODAY,
     ))
     panel = TodayPanel(wiring["task_service"], wiring["schedule_service"], wiring["category_repo"])
 
@@ -208,7 +207,7 @@ def test_unscheduled_active_task_lands_in_unscheduled_section(wiring):
     wiring["task_repo"].create(Task(
         id=None, title="Someday", description="", task_type=TaskType.NORMAL,
         project_id=None, category="Personal", importance=2, urgency=2,
-        seriousness=2, effort=1, available_from=TODAY, due_date=None,
+        seriousness=2, effort=1, due_date=None,
         status=TaskStatus.PENDING, created_at=TODAY,
     ))
     panel = TodayPanel(wiring["task_service"], wiring["schedule_service"], wiring["category_repo"])

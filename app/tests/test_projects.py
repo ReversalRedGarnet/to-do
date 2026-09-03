@@ -35,7 +35,7 @@ def make_child(project_id, **overrides):
     defaults = dict(
         id=None, title="Child", description="", task_type=TaskType.PROJECT_CHILD,
         project_id=project_id, category="Personal", importance=3, urgency=3,
-        seriousness=3, effort=1, available_from=TODAY, due_date=None,
+        seriousness=3, effort=1, due_date=None,
         status=TaskStatus.PENDING, created_at=TODAY,
     )
     defaults.update(overrides)
@@ -158,7 +158,7 @@ def test_assigning_a_project_flips_a_normal_task_to_project_child(conn, task_ser
     task_id = task_repo.create(Task(
         id=None, title="Loose task", description="", task_type=TaskType.NORMAL,
         project_id=None, category="Personal", importance=3, urgency=3, seriousness=3,
-        effort=1, available_from=TODAY, due_date=None, status=TaskStatus.PENDING, created_at=TODAY,
+        effort=1, due_date=None, status=TaskStatus.PENDING, created_at=TODAY,
     ))
 
     task_service.update_task(task_id, project_id=project_id)

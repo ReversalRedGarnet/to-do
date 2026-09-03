@@ -24,7 +24,6 @@ def _row_to_task(row) -> Task:
         urgency=row["urgency"],
         seriousness=row["seriousness"],
         effort=row["effort"],
-        available_from=date.fromisoformat(row["available_from"]) if row["available_from"] else None,
         due_date=date.fromisoformat(row["due_date"]) if row["due_date"] else None,
         status=TaskStatus(row["status"]),
         progress=row["progress"],
@@ -51,18 +50,17 @@ class TaskRepository:
             INSERT INTO tasks
                 (project_id, title, description, task_type, category,
                  importance, urgency, seriousness, effort,
-                 available_from, due_date, status, progress,
+                 due_date, status, progress,
                  created_at, completed_at, deferred_at,
                  last_scheduled_date, current_scheduled_date,
                  days_exposed, times_deferred, times_ignored,
                  recurrence_rule_id, created_week)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 task.project_id, task.title, task.description, task.task_type.value,
                 task.category, task.importance, task.urgency, task.seriousness,
                 task.effort,
-                task.available_from.isoformat() if task.available_from else None,
                 task.due_date.isoformat() if task.due_date else None,
                 task.status.value, task.progress,
                 task.created_at.isoformat() if task.created_at else None,
@@ -121,22 +119,21 @@ class TaskRepository:
         return [_row_to_task(r) for r in rows]
 
     def list_eligible_for_week(self, week_start: date, week_end: date) -> List[Task]:
-        """Pending/scheduled tasks whose [available_from, due_date] window
-        could overlap this week — candidates for generate_weekly_schedule.
-        A child of an archived project is never a candidate — archiving a
-        project takes its children out of week planning entirely, without
-        deleting or force-completing them (they're still visible/editable
-        via the project's own detail view)."""
+        """Pending/scheduled tasks whose due date could overlap this week —
+        candidates for generate_weekly_schedule. A child of an archived
+        project is never a candidate — archiving a project takes its
+        children out of week planning entirely, without deleting or
+        force-completing them (they're still visible/editable via the
+        project's own detail view)."""
         rows = self._conn.execute(
             """
             SELECT tasks.* FROM tasks
             LEFT JOIN projects ON tasks.project_id = projects.id
             WHERE tasks.status IN ('pending', 'scheduled')
               AND (tasks.due_date IS NULL OR tasks.due_date >= ?)
-              AND (tasks.available_from IS NULL OR tasks.available_from <= ?)
               AND (tasks.project_id IS NULL OR projects.active = 1)
             """,
-            (week_start.isoformat(), week_end.isoformat()),
+            (week_start.isoformat(),),
         ).fetchall()
         return [_row_to_task(r) for r in rows]
 
@@ -146,7 +143,7 @@ class TaskRepository:
             UPDATE tasks SET
                 project_id = ?, title = ?, description = ?, task_type = ?,
                 category = ?, importance = ?, urgency = ?, seriousness = ?,
-                effort = ?, available_from = ?, due_date = ?, status = ?,
+                effort = ?, due_date = ?, status = ?,
                 progress = ?, completed_at = ?, deferred_at = ?,
                 last_scheduled_date = ?, current_scheduled_date = ?,
                 days_exposed = ?, times_deferred = ?, times_ignored = ?,
@@ -157,7 +154,6 @@ class TaskRepository:
                 task.project_id, task.title, task.description, task.task_type.value,
                 task.category, task.importance, task.urgency, task.seriousness,
                 task.effort,
-                task.available_from.isoformat() if task.available_from else None,
                 task.due_date.isoformat() if task.due_date else None,
                 task.status.value, task.progress,
                 task.completed_at.isoformat() if task.completed_at else None,

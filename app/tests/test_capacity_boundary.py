@@ -70,7 +70,7 @@ def make_task(wiring, **overrides):
     defaults = dict(
         id=None, title="Task", description="", task_type=TaskType.NORMAL,
         project_id=None, category="Personal", importance=3, urgency=3,
-        seriousness=3, effort=1, available_from=WEEK_START, due_date=None,
+        seriousness=3, effort=1, due_date=None,
         status=TaskStatus.PENDING, created_at=WEEK_START,
     )
     defaults.update(overrides)
@@ -105,7 +105,7 @@ def test_overcommitted_boundary_tracks_capacity_and_utilization_constants(level)
     tasks = [
         Task(id=i + 1, title=f"T{i}", description="", task_type=TaskType.NORMAL,
              project_id=None, category="Personal", importance=3, urgency=3,
-             seriousness=3, effort=1, available_from=MONDAY, due_date=MONDAY,
+             seriousness=3, effort=1, due_date=MONDAY,
              status=TaskStatus.PENDING, created_at=MONDAY)
         for i in range(n_that_fit + 1)
     ]
@@ -176,7 +176,7 @@ def test_preview_week_overcommitted_boundary_matches_capacity_constants_at_defau
     from app.core import date_service
     monkeypatch.setattr(date_service, "today", lambda: WEEK_START)
     for _ in range(5):
-        make_task(wiring, effort=1, available_from=WEEK_START, due_date=WEEK_START)
+        make_task(wiring, effort=1, due_date=WEEK_START)
 
     plan = wiring["schedule_service"].preview_week(WEEK_START)
 

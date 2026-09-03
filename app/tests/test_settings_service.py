@@ -67,7 +67,7 @@ def make_task(**overrides):
     defaults = dict(
         id=None, title="Task", description="", task_type=TaskType.NORMAL,
         project_id=None, category="Personal", importance=3, urgency=3,
-        seriousness=3, effort=1, available_from=MONDAY, due_date=MONDAY + timedelta(days=6),
+        seriousness=3, effort=1, due_date=MONDAY + timedelta(days=6),
         status=TaskStatus.PENDING, created_at=MONDAY,
     )
     defaults.update(overrides)

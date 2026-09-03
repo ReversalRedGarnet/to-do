@@ -4,9 +4,8 @@ Weekly scheduling engine — day-level allocation, not hourly.
 v1 is a deterministic greedy allocator (see ALGORITHM.md):
     1. sort eligible tasks by priority score, descending
     2. walk days Monday -> Sunday, walk tasks in sorted order
-    3. place each task on the earliest day within its
-       [available_from, due_date] window with capacity remaining under
-       UTILIZATION_TARGET
+    3. place each task on the earliest day on/before its due date with
+       capacity remaining under UTILIZATION_TARGET
     4. if no day in-window has room, place on the day with the most slack
        in-window anyway and flag OVERCOMMITTED
 
@@ -56,11 +55,7 @@ def _capacity_units(capacities) -> List[float]:
 
 
 def _eligible_days(task, week_dates: List[date]) -> List[date]:
-    return [
-        d for d in week_dates
-        if (task.available_from is None or d >= task.available_from)
-        and (task.due_date is None or d <= task.due_date)
-    ]
+    return [d for d in week_dates if task.due_date is None or d <= task.due_date]
 
 
 def _reason_for(task, today: date) -> str:
@@ -234,8 +229,7 @@ def rebalance_after_missed_task(missed_task, remaining_week_state):
     days = sorted(remaining_week_state.keys())
     eligible_days = [
         d for d in days
-        if (missed_task.available_from is None or d >= missed_task.available_from)
-        and (missed_task.due_date is None or d <= missed_task.due_date)
+        if missed_task.due_date is None or d <= missed_task.due_date
     ]
     if not eligible_days:
         eligible_days = days

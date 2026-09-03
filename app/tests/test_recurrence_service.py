@@ -42,7 +42,7 @@ def make_recurring_task(**overrides):
     defaults = dict(
         id=None, title="Weekly groceries", description="", task_type=TaskType.RECURRING,
         project_id=None, category="Personal", importance=2, urgency=2, seriousness=2,
-        effort=1, available_from=TODAY, due_date=TODAY + timedelta(days=2),
+        effort=1, due_date=TODAY + timedelta(days=2),
         status=TaskStatus.SCHEDULED, created_at=TODAY,
     )
     defaults.update(overrides)
@@ -74,22 +74,25 @@ def test_completing_a_recurring_task_keeps_original_row_intact_and_spawns_next(w
     next_occurrence = next(t for t in all_tasks if t.id != task_id)
     assert next_occurrence.status == TaskStatus.PENDING
     assert next_occurrence.id != task_id
-    assert next_occurrence.available_from == TODAY + timedelta(days=7)
     assert next_occurrence.due_date == TODAY + timedelta(days=9)  # window shape preserved
     assert next_occurrence.recurrence_rule_id == original.recurrence_rule_id
 
 
-def test_daily_recurrence_shifts_by_one_day(wiring):
+def test_daily_recurrence_with_no_due_date_still_spawns_next_occurrence(wiring):
+    """With no due date to shift, the anchor falls back to the completed
+    task's completed_at (see RecurrenceService.ensure_next_occurrence) —
+    there's nothing left to assert a shift against, so this just confirms
+    the next occurrence is still created correctly."""
     task_id = wiring["task_repo"].create(
-        make_recurring_task(available_from=TODAY, due_date=None)
+        make_recurring_task(due_date=None)
     )
     wiring["recurrence_service"].set_recurrence(task_id, RecurrenceFrequency.DAILY)
 
     wiring["task_service"].complete_task(task_id, completed_on=TODAY)
 
     next_occurrence = next(t for t in wiring["task_repo"].list_all() if t.id != task_id)
-    assert next_occurrence.available_from == TODAY + timedelta(days=1)
     assert next_occurrence.due_date is None
+    assert next_occurrence.status == TaskStatus.PENDING
 
 
 def test_clear_recurrence_stops_future_spawning(wiring):

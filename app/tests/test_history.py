@@ -58,13 +58,13 @@ def test_active_and_future_tasks_survive_history_purge(conn, history_service):
     active = Task(
         id=None, title="Active task", description="", task_type=TaskType.NORMAL,
         project_id=None, category="Personal", importance=3, urgency=3,
-        seriousness=3, effort=1, available_from=WEEK1, due_date=None,
+        seriousness=3, effort=1, due_date=None,
         status=TaskStatus.PENDING, created_at=WEEK1,
     )
     future = Task(
         id=None, title="Future task", description="", task_type=TaskType.NORMAL,
         project_id=None, category="Personal", importance=3, urgency=3,
-        seriousness=3, effort=1, available_from=WEEK3, due_date=None,
+        seriousness=3, effort=1, due_date=None,
         status=TaskStatus.PENDING, created_at=WEEK1,
     )
     active_id = task_repo.create(active)

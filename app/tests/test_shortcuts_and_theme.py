@@ -55,7 +55,7 @@ def window(conn):
     task_id = task_repo.create(Task(
         id=None, title="Task", description="", task_type=TaskType.NORMAL,
         project_id=None, category="Personal", importance=3, urgency=3,
-        seriousness=3, effort=1, available_from=TODAY, due_date=None,
+        seriousness=3, effort=1, due_date=None,
         status=TaskStatus.SCHEDULED, created_at=TODAY,
     ))
     this_week_start = week_start(TODAY)

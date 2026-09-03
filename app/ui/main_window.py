@@ -470,6 +470,8 @@ def build_main_window(
         today_panel.refresh()
         week_board.refresh()
         project_panel.refresh()
+        if index == 1:
+            week_board.scroll_to_first_active_day()
 
     sidebar.currentRowChanged.connect(_on_sidebar_row_changed)
     sidebar.setCurrentRow(0)

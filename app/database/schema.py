@@ -49,7 +49,6 @@ CREATE TABLE IF NOT EXISTS tasks (
     seriousness INTEGER NOT NULL CHECK (seriousness BETWEEN 1 AND 5),
     effort      INTEGER NOT NULL CHECK (effort BETWEEN 1 AND 5),
 
-    available_from TEXT,   -- ISO date, nullable
     due_date        TEXT,   -- ISO date, nullable
 
     status   TEXT NOT NULL DEFAULT 'pending'
@@ -70,7 +69,6 @@ CREATE TABLE IF NOT EXISTS tasks (
     recurrence_rule_id INTEGER REFERENCES recurrence_rules(id) ON DELETE SET NULL,
     created_week        TEXT,
 
-    CHECK (available_from IS NULL OR due_date IS NULL OR available_from <= due_date),
     CHECK (NOT (completed_at IS NOT NULL AND deferred_at IS NOT NULL AND status != 'completed'))
 );
 
@@ -137,5 +135,16 @@ CREATE TABLE IF NOT EXISTS app_state (
     last_notified_date   TEXT   -- ISO date of the last startup/rollover notification batch,
                                  -- so the startup pass and the mid-session timer can't both
                                  -- fire the same day's notifications (spec §31 "avoid excessive")
+);
+
+-- Tracks which versioned, non-additive migrations (see db.py's
+-- _VERSIONED_MIGRATIONS — table rebuilds, e.g. dropping a column) have
+-- already been applied to this database file. Distinct from the older
+-- additive `_MIGRATIONS` list in db.py, which only ever adds a column via
+-- ALTER TABLE and doesn't need version tracking since "does the column
+-- exist" is itself a sufficient idempotency check.
+CREATE TABLE IF NOT EXISTS schema_version (
+    id      INTEGER PRIMARY KEY CHECK (id = 1),  -- singleton row
+    version INTEGER NOT NULL DEFAULT 0
 );
 """

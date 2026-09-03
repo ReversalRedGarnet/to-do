@@ -36,7 +36,6 @@ class TaskService:
         urgency: Optional[int] = None,
         seriousness: Optional[int] = None,
         effort: Optional[int] = None,
-        available_from: Optional[date] = None,
         due_date: Optional[date] = None,
         recurrence_rule_id: Optional[int] = None,
     ) -> Task:
@@ -53,8 +52,7 @@ class TaskService:
             urgency=urgency if urgency is not None else DEFAULT_TASK_VALUES["urgency"],
             seriousness=seriousness if seriousness is not None else DEFAULT_TASK_VALUES["seriousness"],
             effort=effort if effort is not None else DEFAULT_TASK_VALUES["effort"],
-            available_from=available_from if available_from is not None else today,
-            due_date=due_date,
+            due_date=date_service.normalize_due_date(due_date, today),
             status=TaskStatus.PENDING,
             created_at=today,
             recurrence_rule_id=recurrence_rule_id,
@@ -150,6 +148,8 @@ class TaskService:
         the caller explicitly passed `task_type` too — assigning a project
         makes a task a project child, clearing it reverts to normal."""
         task = self._tasks.get_by_id(task_id)
+        if "due_date" in fields:
+            fields["due_date"] = date_service.normalize_due_date(fields["due_date"])
         if "project_id" in fields and "task_type" not in fields:
             new_project_id = fields["project_id"]
             if new_project_id is not None and task.task_type == TaskType.NORMAL:

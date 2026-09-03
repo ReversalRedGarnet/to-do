@@ -60,7 +60,7 @@ def test_project_card_shows_open_count_and_progress(wiring):
     wiring["task_repo"].create(Task(
         id=None, title="Child", description="", task_type=TaskType.PROJECT_CHILD,
         project_id=project_id, category="Personal", importance=3, urgency=3, seriousness=3,
-        effort=1, available_from=TODAY, due_date=None, status=TaskStatus.PENDING, created_at=TODAY,
+        effort=1, due_date=None, status=TaskStatus.PENDING, created_at=TODAY,
     ))
     view = ProjectView(wiring["project_service"], wiring["task_service"], wiring["category_repo"])
 

@@ -72,9 +72,14 @@ class TodayPanel(QWidget, TaskSelectionMixin):
 
         self._overdue_section = CollapsibleSection("Overdue")
         self._today_section = CollapsibleSection("Today")
-        self._unscheduled_section = CollapsibleSection("Unscheduled / Later")
+        self._tomorrow_section = CollapsibleSection("Tomorrow")
+        self._this_week_section = CollapsibleSection("This Week")
+        self._this_month_section = CollapsibleSection("This Month")
+        self._next_month_section = CollapsibleSection("Next Month or Later")
+        self._unscheduled_section = CollapsibleSection("Unscheduled")
         self._completed_section = CollapsibleSection("Completed", start_collapsed=True)
-        for section in (self._overdue_section, self._today_section,
+        for section in (self._overdue_section, self._today_section, self._tomorrow_section,
+                        self._this_week_section, self._this_month_section, self._next_month_section,
                         self._unscheduled_section, self._completed_section):
             sections_layout.addWidget(section)
         sections_layout.addStretch()
@@ -104,6 +109,7 @@ class TodayPanel(QWidget, TaskSelectionMixin):
             card.move_to_project_requested.connect(self._on_move_to_project)
             section.body_layout.addWidget(card)
         section.set_count(len(tasks))
+        section.setVisible(bool(tasks))
 
     def _update_header(self, today, sections) -> None:
         planned_units = sum(EFFORT_UNITS[t.effort] for t in sections.today)
@@ -118,17 +124,24 @@ class TodayPanel(QWidget, TaskSelectionMixin):
         today = date.today()
         schedule = self._schedule_service.get_week(week_start(today))
         todays_entries = schedule.get(today, [])
-        scheduled_ids = {e.task_id for e in todays_entries}
         expected_date_by_task = {e.task_id: e.scheduled_date for e in todays_entries}
         categories = self._categories.list_all()
 
         all_tasks = self._task_service.list_all(exclude_archived_project_children=True)
-        sections = build_today_sections(all_tasks, today, scheduled_ids)
+        sections = build_today_sections(all_tasks, today)
 
         self._render_section(self._overdue_section, sections.overdue, today,
                               expected_date_by_task, categories, show_defer=False)
         self._render_section(self._today_section, sections.today, today,
                               expected_date_by_task, categories, show_defer=True)
+        self._render_section(self._tomorrow_section, sections.tomorrow, today,
+                              expected_date_by_task, categories, show_defer=False)
+        self._render_section(self._this_week_section, sections.this_week, today,
+                              expected_date_by_task, categories, show_defer=False)
+        self._render_section(self._this_month_section, sections.this_month, today,
+                              expected_date_by_task, categories, show_defer=False)
+        self._render_section(self._next_month_section, sections.next_month_or_later, today,
+                              expected_date_by_task, categories, show_defer=False)
         self._render_section(self._unscheduled_section, sections.unscheduled, today,
                               expected_date_by_task, categories, show_defer=False)
         self._render_section(self._completed_section, sections.completed, today,
@@ -137,7 +150,11 @@ class TodayPanel(QWidget, TaskSelectionMixin):
         self._update_header(today, sections)
 
         still_present_ids = {
-            t.id for t in sections.overdue + sections.today + sections.unscheduled + sections.completed
+            t.id for t in (
+                sections.overdue + sections.today + sections.tomorrow + sections.this_week
+                + sections.this_month + sections.next_month_or_later + sections.unscheduled
+                + sections.completed
+            )
         }
         if self._selected_task_id not in still_present_ids:
             self._selected_task_id = None

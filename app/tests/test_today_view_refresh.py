@@ -1,6 +1,6 @@
 """Regression coverage for "newly added tasks don't appear until Generate
-Week is run". build_today_sections itself already buckets every active,
-never-scheduled task into Unscheduled/Later (see core/board_view.py) —
+Week is run". build_today_sections itself already buckets every active
+task with no due_date into Unscheduled (see core/board_view.py) —
 the actual defect was that switching sidebar tabs never re-ran
 TodayPanel.refresh(), so a task created from anywhere other than Today's
 own quick-add box (e.g. the Week view's quick-add) stayed invisible on

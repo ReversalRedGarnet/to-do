@@ -65,10 +65,14 @@ def wiring(conn):
 
 
 def make_scheduled_task(wiring, **overrides):
+    """Also gives the task a due_date of TODAY by default: the Today
+    panel's sectioning is due-date-based (core/board_view.py), so a task
+    meant to land in the Today section needs to actually be due today,
+    not merely have a schedule entry for today."""
     defaults = dict(
         id=None, title="Task", description="", task_type=TaskType.NORMAL,
         project_id=None, category="Personal", importance=3, urgency=3,
-        seriousness=3, effort=1, due_date=None,
+        seriousness=3, effort=1, due_date=TODAY,
         status=TaskStatus.SCHEDULED, created_at=TODAY,
     )
     defaults.update(overrides)

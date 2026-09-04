@@ -23,6 +23,18 @@ def week_end(for_date: date) -> date:
     return week_start(for_date) + timedelta(days=6)
 
 
+def next_month_start(for_date: date) -> date:
+    """The 1st of the calendar month after for_date's."""
+    if for_date.month == 12:
+        return date(for_date.year + 1, 1, 1)
+    return date(for_date.year, for_date.month + 1, 1)
+
+
+def month_end(for_date: date) -> date:
+    """Last day of the calendar month containing for_date."""
+    return next_month_start(for_date) - timedelta(days=1)
+
+
 def days_between(start: date, end: date) -> int:
     return (end - start).days
 
